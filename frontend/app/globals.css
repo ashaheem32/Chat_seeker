@@ -1,0 +1,227 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ChatLens design tokens — dark-mode first.
+ *
+ * The product never renders in true light mode today; we still set the
+ * .dark class on <html> so any third-party Shadcn / Radix primitive that
+ * branches on `dark:` keeps working. Both blocks below keep the same
+ * palette, so a future light theme can be slotted in without touching
+ * components.
+ *
+ * Color philosophy:
+ *   - Body is a deep near-black charcoal — not pure black, which looks
+ *     flat on OLEDs and lacks "depth". 7% lightness keeps subtle gradient
+ *     work readable.
+ *   - Cards sit one tier brighter than the body so panels feel layered.
+ *   - Sidebar is a third tier (slightly bluer) so chrome reads distinct
+ *     from content without needing harsh borders.
+ *   - Indigo (#6366f1) is the only chromatic accent. Violet (#a855f7) is
+ *     reserved for secondary highlights — gradient stops, glows, hover
+ *     states. Used sparingly to keep the analytical feel.
+ */
+@layer base {
+  :root {
+    /* --- surface ------------------------------------------------------- */
+    --background: 240 12% 7%;          /* #0f0f13 */
+    --foreground: 220 15% 92%;
+
+    --card: 240 16% 11%;               /* #161620 */
+    --card-foreground: 220 15% 95%;
+    --card-elevated: 240 16% 13%;
+
+    --popover: 240 16% 11%;
+    --popover-foreground: 220 15% 95%;
+
+    /* Sidebar / chrome — sits one notch brighter than body. */
+    --sidebar: 240 16% 12%;            /* #1a1a24 */
+    --sidebar-foreground: 220 12% 78%;
+    --sidebar-accent: 240 18% 16%;
+    --sidebar-accent-foreground: 220 15% 96%;
+    --sidebar-border: 240 14% 20%;
+
+    /* --- accent -------------------------------------------------------- */
+    --primary: 239 84% 67%;            /* #6366f1 indigo-500 */
+    --primary-foreground: 240 14% 98%;
+    --primary-glow: 239 90% 75%;
+
+    --accent: 264 84% 70%;             /* violet for glows / 2nd-tier highlights */
+    --accent-foreground: 240 14% 98%;
+
+    /* --- semantic ------------------------------------------------------ */
+    --secondary: 240 16% 15%;
+    --secondary-foreground: 220 12% 80%;
+
+    --muted: 240 14% 14%;
+    --muted-foreground: 240 8% 62%;
+
+    --destructive: 0 76% 60%;
+    --destructive-foreground: 240 14% 98%;
+
+    --success: 152 70% 45%;
+    --success-foreground: 240 14% 98%;
+
+    --warning: 38 95% 60%;
+    --warning-foreground: 240 14% 12%;
+
+    --border: 240 14% 18%;
+    --input: 240 14% 14%;
+    --ring: 239 84% 67%;
+
+    /* --- chart palette ------------------------------------------------- */
+    --chart-1: 239 84% 67%;            /* indigo  */
+    --chart-2: 264 84% 70%;            /* violet  */
+    --chart-3: 188 95% 60%;            /* cyan    */
+    --chart-4: 32 95% 65%;             /* amber   */
+    --chart-5: 340 80% 65%;            /* pink    */
+
+    --radius: 0.75rem;
+  }
+
+  /* Same palette under .dark for safety — Shadcn primitives sometimes
+     hard-code `.dark` selectors. Both blocks keep parity. */
+  .dark {
+    --background: 240 12% 7%;
+    --foreground: 220 15% 92%;
+    --card: 240 16% 11%;
+    --card-foreground: 220 15% 95%;
+    --card-elevated: 240 16% 13%;
+    --popover: 240 16% 11%;
+    --popover-foreground: 220 15% 95%;
+    --sidebar: 240 16% 12%;
+    --sidebar-foreground: 220 12% 78%;
+    --sidebar-accent: 240 18% 16%;
+    --sidebar-accent-foreground: 220 15% 96%;
+    --sidebar-border: 240 14% 20%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 240 14% 98%;
+    --primary-glow: 239 90% 75%;
+    --accent: 264 84% 70%;
+    --accent-foreground: 240 14% 98%;
+    --secondary: 240 16% 15%;
+    --secondary-foreground: 220 12% 80%;
+    --muted: 240 14% 14%;
+    --muted-foreground: 240 8% 62%;
+    --destructive: 0 76% 60%;
+    --destructive-foreground: 240 14% 98%;
+    --success: 152 70% 45%;
+    --success-foreground: 240 14% 98%;
+    --warning: 38 95% 60%;
+    --warning-foreground: 240 14% 12%;
+    --border: 240 14% 18%;
+    --input: 240 14% 14%;
+    --ring: 239 84% 67%;
+    --chart-1: 239 84% 67%;
+    --chart-2: 264 84% 70%;
+    --chart-3: 188 95% 60%;
+    --chart-4: 32 95% 65%;
+    --chart-5: 340 80% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Display headings get the Syne treatment — slightly tightened tracking
+     and a touch heavier weight than the default for editorial gravitas. */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display), var(--font-sans), sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Custom scrollbar — keeps with the analytical aesthetic without
+     looking like a 90s OS chrome. Falls back gracefully on Firefox. */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--background));
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  /* Keyboard focus only — mouse users don't get the ring. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+    color: hsl(var(--primary-foreground));
+  }
+}
+
+@layer components {
+  /* Premium "frosted" card surface used by the dashboard panels. */
+  .surface-card {
+    @apply rounded-xl border border-border bg-card shadow-soft;
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--card-elevated) / 0.6),
+      hsl(var(--card))
+    );
+  }
+
+  /* Hero gradient text — used for the landing headline and section eyebrows. */
+  .gradient-text {
+    background: linear-gradient(
+      120deg,
+      hsl(var(--foreground)) 0%,
+      hsl(var(--primary-glow)) 45%,
+      hsl(var(--accent)) 80%,
+      hsl(var(--foreground)) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    @apply animate-gradient-shift;
+  }
+
+  /* Shimmer placeholder used during async loads. */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.15) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Subtle dotted background — used on auth / landing for depth. */
+  .bg-dots {
+    background-image: radial-gradient(
+      hsl(var(--border)) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+    background-position: 0 0;
+  }
+}

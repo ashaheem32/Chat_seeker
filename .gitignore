@@ -1,0 +1,52 @@
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- OS / editor ----
+.DS_Store
+# macOS AppleDouble metadata (created on non-HFS volumes like exFAT/FAT32)
+._*
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- Python / backend ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Node / frontend ----
+node_modules/
+.next/
+out/
+.pnpm-store/
+*.log
+.next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ---- Docker / data ----
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.pid
+
+# ---- Build artifacts ----
+dist/
+build/
+
+# ---- Local-only assets ----
+*.local
+
+
+.claude

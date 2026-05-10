@@ -1,0 +1,150 @@
+# ============================================================================
+# ChatLens - Production Docker Compose
+# ----------------------------------------------------------------------------
+# Brings up the full stack: Next.js frontend, FastAPI backend, PostgreSQL with
+# the pgvector extension, and Redis. Use docker-compose.dev.yml as an override
+# for local development with hot reload.
+#
+#   Production:  docker compose up -d --build
+#   Development: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ============================================================================
+
+services:
+  postgres:
+    # pgvector/pgvector ships Postgres 16 with the pgvector extension already
+    # installed - saves us from building a custom image just to CREATE EXTENSION.
+    image: pgvector/pgvector:pg16
+    container_name: chatlens-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chatlens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatlens_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-chatlens}
+    ports:
+      # Exposed so devs can connect with psql/DBeaver from the host. Remove
+      # this line in production deployments where Postgres should be internal.
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # init scripts run once on first boot - good place for CREATE EXTENSION
+      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatlens} -d ${POSTGRES_DB:-chatlens}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chatlens-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatlens-redis
+    restart: unless-stopped
+    # appendonly yes => durable persistence for Celery task state
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - chatlens-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chatlens-backend
+    restart: unless-stopped
+    environment:
+      # Async driver (asyncpg) for SQLAlchemy 2.0 async engine
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chatlens}:${POSTGRES_PASSWORD:-chatlens_dev_password}@postgres:5432/${POSTGRES_DB:-chatlens}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Persist user uploads outside the container so they survive rebuilds
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - chatlens-net
+
+  worker:
+    # Celery worker reuses the backend image but runs a different entrypoint.
+    # Keeps web requests snappy by offloading analysis jobs.
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chatlens-worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-chatlens}:${POSTGRES_PASSWORD:-chatlens_dev_password}@postgres:5432/${POSTGRES_DB:-chatlens}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - chatlens-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Public env vars must be baked in at build time for Next.js
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: chatlens-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Server-side API URL (used by Next.js API routes acting as proxies)
+      BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - chatlens-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  chatlens-net:
+    driver: bridge

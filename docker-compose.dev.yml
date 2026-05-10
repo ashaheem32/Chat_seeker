@@ -1,0 +1,56 @@
+# ============================================================================
+# ChatLens - Development Override
+# ----------------------------------------------------------------------------
+# Layer this on top of docker-compose.yml to get hot reload for both frontend
+# and backend, plus source code mounted into containers.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ============================================================================
+
+services:
+  backend:
+    # Override CMD: uvicorn --reload watches Python files and restarts.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      # Looser CORS in dev so Storybook / alternate ports work
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
+    volumes:
+      # Mount source for live-reload; .venv stays in the image to avoid host
+      # OS contamination of installed packages.
+      - ./backend/app:/app/app
+      - ./backend/scripts:/app/scripts
+      - backend_uploads:/app/uploads
+
+  worker:
+    # Celery has a --reload-equivalent via watchdog; use auto-restart for dev.
+    command: watchmedo auto-restart --directory=/app/app --pattern=*.py --recursive -- celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./backend/app:/app/app
+
+  frontend:
+    # Override the production multi-stage build with a dev-mode container that
+    # runs `next dev`. Bind-mount node_modules as a named volume to avoid the
+    # host's node_modules clobbering the container's (different OS/arch).
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: deps  # stop at deps stage; we run dev server directly
+    command: pnpm dev
+    environment:
+      NODE_ENV: development
+      BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      WATCHPACK_POLLING: "true"  # required for hot reload on macOS bind mounts
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+
+volumes:
+  frontend_node_modules:
+  frontend_next_cache:
