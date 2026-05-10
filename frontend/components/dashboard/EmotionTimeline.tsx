@@ -22,13 +22,12 @@
  * the others. Skeletons mirror the eventual layout.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import {
   Area,
   CartesianGrid,
   ComposedChart,
-  Dot,
   Line,
   ReferenceDot,
   ReferenceLine,
@@ -42,20 +41,17 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  RefreshCcw,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
-import { Button } from "@/components/ui/button";
 import {
   getEmotionalPeaks,
   getEmotionByParticipant,
   getMoodCalendar,
   getSentimentTimeline,
 } from "@/lib/api";
-import { toast } from "@/lib/toast";
 import type {
   EmotionByParticipant,
   EmotionClass,
@@ -67,7 +63,6 @@ import type {
   ParticipantEmotionDistribution,
   SampleMessage,
   SentimentTimeline,
-  SentimentTimelinePoint,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -84,11 +79,6 @@ const EMOTION_COLORS: Record<EmotionClass, string> = {
   surprise: "#06b6d4",
   disgust: "#84cc16",
 };
-
-// Emotion display order — matches backend `_EMOTION_ORDER`.
-const EMOTIONS: EmotionClass[] = [
-  "joy", "love", "sadness", "anger", "fear", "surprise", "disgust",
-];
 
 // Sentiment color stops for the calendar heatmap.
 //   Positive: indigo → warm pink.   Negative: cool slate → indigo.
@@ -618,11 +608,11 @@ function DistributionSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<EmotionByParticipant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
+    // No fetchedRef guard — Strict Mode's doubled mount is handled by the
+    // AbortController + cancelled flag below. The guard would block the
+    // re-fetch after the first abort, freezing the panel on its skeleton.
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -635,7 +625,7 @@ function DistributionSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load distribution");
         setLoading(false);
       });
@@ -848,11 +838,8 @@ export function MoodCalendarSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<MoodCalendar | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -865,7 +852,7 @@ export function MoodCalendarSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load calendar");
         setLoading(false);
       });
@@ -1100,11 +1087,8 @@ function PeaksSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<EmotionalPeaks | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -1117,7 +1101,7 @@ function PeaksSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load peaks");
         setLoading(false);
       });
@@ -1565,4 +1549,11 @@ function addDays(iso: string, n: number): string {
   const d = parseISO(iso);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** True for either AbortController or axios-style cancellation errors. Both
+ *  can fire when Strict Mode unmounts a section's effect mid-flight. */
+function _isAbort(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "CanceledError" || e.name === "AbortError";
 }

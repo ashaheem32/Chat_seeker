@@ -21,7 +21,7 @@
  *   panel with retry on failure.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Calendar,
@@ -68,18 +68,18 @@ export function StatsOverview({ uploadId }: { uploadId: string }) {
   const [stats, setStats] = useState<OverviewStats | null>(cached ?? null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(!cached);
-  // Strict-mode guard so the initial fetch doesn't run twice in dev.
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Strict Mode in dev mounts the effect twice. We rely on
+    // (AbortController + cancelled flag) to make the doubled run a no-op:
+    // the first effect aborts on cleanup and its .catch returns early on
+    // AbortError; the second effect fires a fresh fetch that wins.
     let cancelled = false;
     if (cached) {
       setStats(cached);
       setLoading(false);
       return;
     }
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
 
     const ctrl = new AbortController();
     setLoading(true);
@@ -94,7 +94,7 @@ export function StatsOverview({ uploadId }: { uploadId: string }) {
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         const msg = e instanceof Error ? e.message : "Failed to load stats";
         setError(msg);
         setLoading(false);
@@ -952,4 +952,11 @@ function stringToHue(value: string): number {
     h = (h * 31 + value.charCodeAt(i)) | 0;
   }
   return Math.abs(h) % 360;
+}
+
+/** True for either AbortController or axios-style cancellation errors.
+ *  Both can fire when Strict Mode unmounts the effect mid-flight. */
+function _isAbort(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "CanceledError" || e.name === "AbortError";
 }

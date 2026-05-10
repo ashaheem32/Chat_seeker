@@ -44,6 +44,79 @@ def analyze_chat(self, chat_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Parse + persist task
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(
+    name="chatlens.parse_upload",
+    bind=True,
+    max_retries=1,
+    acks_late=True,
+)
+def parse_upload_task(
+    self, upload_id: str, file_path: str, platform: str | None = None
+) -> dict:
+    """Parse a stored upload file and persist its messages.
+
+    Triggered by `POST /upload` after the raw bytes are saved to disk.
+    On success, chains to `normalize_language_task` (which in turn chains
+    NLP + embeddings). Failures flip ChatUpload.status to `failed` with a
+    human-readable reason in `processing_error`.
+    """
+    try:
+        uid = UUID(upload_id)
+    except ValueError:
+        logger.error("Invalid upload_id passed to parse_upload_task: %r", upload_id)
+        raise Ignore()  # noqa: RSE102
+
+    logger.info("[task=%s] parse_upload start upload_id=%s file=%s", self.request.id, uid, file_path)
+
+    try:
+        result = asyncio.run(_run_parse(uid, file_path, platform))
+    except Exception as e:
+        logger.exception(
+            "[task=%s] parse_upload failed for upload_id=%s", self.request.id, uid
+        )
+        # Best-effort status update so the UI sees the failure.
+        try:
+            asyncio.run(_mark_upload_failed(uid, f"Parse error: {e}"))
+        except Exception:
+            logger.exception("Could not mark upload %s failed", uid)
+        return {
+            "upload_id": str(uid),
+            "status": "failed",
+            "error": str(e),
+        }
+
+    # Chain language normalization → NLP → embeddings.
+    try:
+        from app.tasks.language_tasks import normalize_language_task
+
+        compact = result.pop("language_inputs", [])
+        normalize_language_task.delay(str(uid), compact)
+        logger.info(
+            "[task=%s] queued normalize_language_task for upload_id=%s",
+            self.request.id,
+            uid,
+        )
+    except Exception:
+        # If the broker is misconfigured, NLP / embeddings stay un-run.
+        # Status reflects "processing"; manual rerun is possible.
+        logger.warning(
+            "[task=%s] couldn't enqueue normalize_language_task; "
+            "downstream stages will need a manual re-run",
+            self.request.id,
+        )
+
+    return {
+        "upload_id": str(uid),
+        "status": "ok",
+        **result,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main NLP task
 # ---------------------------------------------------------------------------
 
@@ -179,6 +252,99 @@ def generate_embeddings_task(self, upload_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Async runners
 # ---------------------------------------------------------------------------
+
+
+async def _run_parse(
+    upload_id: UUID, file_path: str, platform: str | None
+) -> dict:
+    """Read the saved file, parse it, persist messages, update meta.
+
+    Returns a dict shaped like:
+        {
+          "total_messages": int,
+          "detected_platform": str,
+          "skipped_count": int,
+          "language_inputs": [{"id": "...", "content": "..."}, ...],
+        }
+    `language_inputs` is the compact projection the language normalize
+    task expects; we build it here so we don't have to re-fetch from the
+    DB just to enqueue the next stage.
+    """
+    from pathlib import Path
+
+    from app.core.database import make_worker_engine
+    from app.models import ChatUpload, ProcessingStatus
+    from app.services.parser import parse_file
+    from app.services.parser.detector import PlatformType
+    from app.services.uploads import persist_parsed_ucj
+
+    raw = Path(file_path).read_bytes()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.info(
+            "Upload %s: not UTF-8 in %s, falling back to latin-1",
+            upload_id, file_path,
+        )
+        content = raw.decode("latin-1", errors="replace")
+
+    platform_override: PlatformType | None = None
+    if platform:
+        try:
+            platform_override = PlatformType(platform)
+        except ValueError:
+            platform_override = None
+
+    filename = Path(file_path).name
+    ucj, detection = parse_file(content, filename, platform=platform_override)
+
+    engine, SessionLocal = make_worker_engine()
+    try:
+        async with SessionLocal() as session:
+            # Reuse the stub row that the route created; the helper updates
+            # it in place (filename, meta, status=processing) and bulk-inserts
+            # all messages.
+            await persist_parsed_ucj(
+                session, upload_id, ucj, detection, filename, create_row=False
+            )
+
+            # Snapshot some fields for the response.
+            upload = await session.get(ChatUpload, upload_id)
+            if upload is not None and upload.status == ProcessingStatus.processing:
+                # Persistence is done; status will be advanced again by the
+                # NLP pipeline. Leave it at `processing` here.
+                pass
+    finally:
+        await engine.dispose()
+
+    compact = [
+        {"id": m.id, "content": m.content}
+        for m in getattr(ucj, "messages", [])
+    ]
+
+    return {
+        "total_messages": ucj.meta.total_messages,
+        "detected_platform": detection.platform.value,
+        "skipped_count": getattr(ucj, "_skipped_count", 0),
+        "language_inputs": compact,
+    }
+
+
+async def _mark_upload_failed(upload_id: UUID, message: str) -> None:
+    """Flip the upload's status to `failed` with `processing_error=message`."""
+    from app.core.database import make_worker_engine
+    from app.models import ChatUpload, ProcessingStatus
+
+    engine, SessionLocal = make_worker_engine()
+    try:
+        async with SessionLocal() as session:
+            upload = await session.get(ChatUpload, upload_id)
+            if upload is not None:
+                upload.status = ProcessingStatus.failed
+                upload.processing_error = message[:1000]
+                await session.commit()
+    finally:
+        await engine.dispose()
 
 
 async def _run_pipeline(upload_id: UUID) -> dict:

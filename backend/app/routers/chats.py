@@ -10,7 +10,7 @@ Endpoints (mounted under /api/v1/conversations):
 
 Auth note:
     Until the auth layer ships (M03), every request is scoped to the
-    same dev user via `_get_or_create_dev_user_id`. That helper lives
+    same dev user via `get_or_create_dev_user_id`. That helper lives
     on the upload router because it had the first need; we re-import
     it here so the dev-user-id lookup stays in one place.
 
@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models import ChatUpload, ProcessingStatus
 from app.routers.upload import broker as upload_broker
-from app.routers.upload import _get_or_create_dev_user_id
+from app.services.uploads import get_or_create_dev_user_id
 from app.schemas.conversation import (
     ConversationDateRange,
     ConversationDetail,
@@ -110,7 +110,7 @@ async def list_conversations(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationListResponse:
-    user_id = await _get_or_create_dev_user_id(db)
+    user_id = await get_or_create_dev_user_id(db)
 
     # Count + page in two queries. We use `count(id)` rather than COUNT(*)
     # so Postgres can use the indexed PK rather than counting rows including
@@ -258,7 +258,7 @@ async def _load_owned_upload(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Conversation {conversation_id} not found",
         )
-    user_id = await _get_or_create_dev_user_id(db)
+    user_id = await get_or_create_dev_user_id(db)
     if upload.user_id != user_id:
         # Hide existence from non-owners — same response as not-found so we
         # don't leak that this id is taken by someone else.

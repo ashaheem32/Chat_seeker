@@ -22,7 +22,7 @@
  * directly under the score so users see it before any factor breakdown.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   Bell,
@@ -91,11 +91,8 @@ export function HealthScore({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<HealthScoreReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -109,7 +106,7 @@ export function HealthScore({ uploadId }: { uploadId: string }) {
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load health score");
         setLoading(false);
       });
@@ -530,5 +527,12 @@ function ErrorPanel({ error }: { error: string }) {
       </div>
     </div>
   );
+}
+
+/** True for either AbortController or axios-style cancellation errors. Both
+ *  can fire when Strict Mode unmounts a section's effect mid-flight. */
+function _isAbort(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "CanceledError" || e.name === "AbortError";
 }
 

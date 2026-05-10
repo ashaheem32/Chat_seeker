@@ -96,6 +96,12 @@ _OPENAI_USD_PER_TOKEN = 0.020 / 1_000_000
 _LOCAL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 _LOCAL_NATIVE_DIM = 384
 
+# OpenAI's text-embedding-3-* models reject any input longer than 8192
+# tokens with HTTP 400. We pre-truncate inputs in `_openai_embed` to stay
+# below this — a single over-long message would otherwise blow up the
+# whole batch and force a fallback to the local model.
+_OPENAI_EMBED_TOKEN_LIMIT = 8000  # leave a small safety margin
+
 
 # ---------------------------------------------------------------------------
 # Generator
@@ -295,6 +301,24 @@ class EmbeddingGenerator:
         self._provider = EmbeddingProvider.local
         self._fallback_active = True
 
+    def _truncate_to_token_limit(self, text: str, max_tokens: int) -> str:
+        """Return `text` truncated to at most `max_tokens` cl100k tokens.
+
+        Used before sending inputs to OpenAI's embeddings endpoint, which
+        rejects any single input >8192 tokens with HTTP 400. Truncating in
+        tokens (not characters) keeps the semantic prefix intact and avoids
+        clipping mid-unicode-codepoint that a naive str slice would cause.
+        """
+        encoder = getattr(self, "_tiktoken_encoder", None)
+        if encoder is None:
+            # No encoder yet (shouldn't happen post _init_openai), but fail
+            # safe by returning the text unchanged.
+            return text
+        tokens = encoder.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        return encoder.decode(tokens[:max_tokens])
+
     # ---- Backend implementations ----------------------------------------
     async def _openai_embed(
         self, texts: list[str]
@@ -312,6 +336,16 @@ class EmbeddingGenerator:
         # Sanitize empty strings — the API rejects them. We embed a single
         # space and let the caller's None-handling skip the result.
         sanitized = [t if t and t.strip() else " " for t in texts]
+
+        # Truncate any input over the model's token cap. text-embedding-3-*
+        # rejects inputs >8192 tokens with HTTP 400; truncating in tokens
+        # (not characters) preserves the prefix exactly. A 400 on one outlier
+        # message would otherwise blow the whole batch into the local
+        # fallback path, which is much worse than losing a tail.
+        sanitized = [
+            self._truncate_to_token_limit(t, _OPENAI_EMBED_TOKEN_LIMIT)
+            for t in sanitized
+        ]
 
         retryable = (RateLimitError, APIConnectionError, APITimeoutError)
 

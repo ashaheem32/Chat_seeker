@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getUCJ,
+  getUploadStatus,
   subscribeToProgress,
   uploadChat,
   uploadPastedText,
@@ -155,9 +156,25 @@ export function useUploadFlow(): UploadFlow {
           detectionReason: response.detection_reason,
           uploadResponse: response,
           stage: "parsing",
-          progress: Math.max(s.progress, 70),
-          message: `Detected ${response.detected_platform}`,
+          progress: Math.max(s.progress, 20),
+          message: `Detected ${response.detected_platform}; parsing in background…`,
         }));
+
+        // The upload route now returns as soon as the file is saved and a
+        // stub row exists — actual parsing + persistence happens in a Celery
+        // task. Poll status until the worker reports `ready` (or `failed`)
+        // before fetching the UCJ preview, otherwise getUCJ would race the
+        // pipeline and return empty.
+        await pollUntilReady(response.upload_id, abort.signal, (st) => {
+          setState((s) => ({
+            ...s,
+            uploadId: response.upload_id,
+            progress: Math.max(s.progress, Math.round(st.progress * 100)),
+            message: st.stage_detail || s.message,
+            stage: s.stage === "ready" ? "ready" : st.status,
+            error: st.status === "failed" ? st.error ?? "Processing failed" : s.error,
+          }));
+        });
 
         // Pull the (preview-limited) UCJ so we can render meta/messages/AI.
         const ucj = await getUCJ(response.upload_id, INITIAL.previewMessageLimit);
@@ -170,7 +187,7 @@ export function useUploadFlow(): UploadFlow {
           message: "Conversion complete",
           // If the AI block already came back as part of meta, surface its
           // status in the message line so the user knows it's there.
-          ...(ucj.meta.ai_analysis
+          ...(ucj.meta?.ai_analysis
             ? { message: "AI analysis available" }
             : {}),
         }));
@@ -209,4 +226,42 @@ function isPlatform(value: string): value is Platform {
   return ["whatsapp", "telegram", "instagram", "facebook", "csv", "unknown"].includes(
     value,
   );
+}
+
+const POLL_INTERVAL_MS = 2_000;
+
+/**
+ * Poll the status endpoint until the upload reaches a terminal state.
+ * Resolves on `ready`, throws on `failed` (with the backend's error
+ * message), and aborts when the caller's AbortSignal fires.
+ */
+async function pollUntilReady(
+  uploadId: string,
+  signal: AbortSignal,
+  onTick: (st: Awaited<ReturnType<typeof getUploadStatus>>) => void,
+): Promise<void> {
+  while (!signal.aborted) {
+    const st = await getUploadStatus(uploadId);
+    onTick(st);
+    if (st.status === "ready") return;
+    if (st.status === "failed") {
+      throw new Error(st.error ?? "Processing failed");
+    }
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, POLL_INTERVAL_MS);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal.aborted) {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+  }
 }

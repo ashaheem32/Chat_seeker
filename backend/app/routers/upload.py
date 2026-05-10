@@ -162,13 +162,21 @@ async def upload_chat(
     db: AsyncSession = Depends(get_db),
 ) -> UploadResponse:
     """
-    Accept a chat export, parse it inline, persist messages in bulk, and
-    return the upload id + UCJ meta block.
+    Accept a chat export. The request returns as soon as the file is saved
+    and a stub `ChatUpload` row exists; parsing + persistence + the NLP
+    pipeline all run in a background Celery task. The client polls
+    `GET /upload/{id}` (or subscribes to the WS feed) until status=ready.
 
     Query params:
         platform: Override auto-detection. Useful when the detector can't
             confidently classify a file.
     """
+    from pathlib import Path
+
+    from app.models import ChatUpload, ProcessingStatus, SourcePlatform
+    from app.services.parser.detector import PlatformDetector
+    from app.services.uploads import get_or_create_dev_user_id
+
     if not file.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Filename is required")
 
@@ -184,54 +192,70 @@ async def upload_chat(
 
     upload_id = uuid4()
 
-    # Decode. Most exports are UTF-8; a minority (older WhatsApp Android) are
-    # latin-1. Try UTF-8 first; on failure fall back to latin-1 with errors
-    # replaced so we don't bail on a single bad byte.
+    # ---- 2. Persist raw bytes to disk so the worker can read them. -----
+    upload_dir = Path(settings.UPLOAD_DIR) / str(upload_id)
     try:
-        content = raw.decode("utf-8")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Fall back to /tmp if the configured UPLOAD_DIR isn't writable
+        # (e.g. running outside Docker where /app/uploads doesn't exist).
+        upload_dir = Path("/tmp/chatlens_uploads") / str(upload_id)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / file.filename
+    file_path.write_bytes(raw)
+
+    # ---- 3. Quick platform detection on the first 4KB ------------------
+    # Full parsing happens in the worker; here we just want enough signal
+    # for the response (detected_platform / confidence). PlatformDetector
+    # only reads the head of the content, so passing a sample is cheap.
+    try:
+        sample = raw[:8192].decode("utf-8")
     except UnicodeDecodeError:
-        logger.info("Upload %s: not UTF-8, falling back to latin-1", upload_id)
-        content = raw.decode("latin-1", errors="replace")
+        sample = raw[:8192].decode("latin-1", errors="replace")
+    detection = PlatformDetector.detect(sample, filename=file.filename)
+    if platform is not None:
+        # Explicit override beats sniffing.
+        from app.services.parser.detector import DetectionResult
 
-    await _publish(upload_id, "queued", 0.0, "Upload accepted")
+        detection = DetectionResult(
+            platform=platform, confidence=1.0, reason="explicit override"
+        )
 
-    # ---- 2. Parse ------------------------------------------------------
-    await _publish(upload_id, "parsing", 0.1, f"Parsing {file.filename}")
+    # ---- 4. Stub ChatUpload row at status=pending ----------------------
     try:
-        ucj, detection = parse_file(content, file.filename, platform=platform)
-    except ValueError as e:
-        await _publish(upload_id, "failed", 0.0, str(e))
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
-    except Exception as e:
-        logger.exception("Upload %s: parser crashed", upload_id)
-        await _publish(upload_id, "failed", 0.0, "Parser error")
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Parser error") from e
-
-    await _publish(
-        upload_id, "parsing", 0.6,
-        f"Parsed {ucj.meta.total_messages:,} messages from {detection.platform.value}",
+        platform_enum = SourcePlatform(detection.platform.value)
+    except ValueError:
+        platform_enum = SourcePlatform.unknown
+    user_id = await get_or_create_dev_user_id(db)
+    stub = ChatUpload(
+        id=upload_id,
+        user_id=user_id,
+        platform=platform_enum,
+        filename=file.filename,
+        ucj_data={},
+        total_messages=0,
+        status=ProcessingStatus.pending,
     )
+    db.add(stub)
+    await db.commit()
 
-    # ---- 3. Persist ----------------------------------------------------
-    await _publish(upload_id, "persisting", 0.7, "Saving to database")
+    # ---- 5. Enqueue the parse task -------------------------------------
+    # On success it chains language normalization → NLP → embeddings.
     try:
-        await _persist_upload(db, upload_id, ucj, detection, file.filename)
-    except Exception as e:
-        logger.exception("Upload %s: persistence failed", upload_id)
-        await _publish(upload_id, "failed", 0.0, "Database error")
-        # Roll back any partial inserts.
-        await db.rollback()
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Database error") from e
+        from app.workers.tasks import parse_upload_task
 
-    # ---- 4. Hand off to the async pipeline -----------------------------
-    # Language normalization (Layer 4) runs first; on success it chains
-    # the NLP pipeline, which itself chains the embedding indexer.
-    # Failures here are non-fatal — `content_english` simply stays NULL
-    # and downstream services fall back to `content`. The HTTP response
-    # below still returns 201 so the client can poll status.
-    _enqueue_language_normalization(upload_id, ucj)
+        parse_upload_task.delay(
+            str(upload_id),
+            str(file_path),
+            platform.value if platform is not None else None,
+        )
+    except Exception:
+        logger.exception("Failed to enqueue parse_upload_task for %s", upload_id)
+        # The row stays at `pending`. The frontend will see that and can
+        # surface a retry. We don't 500 the response — the upload itself
+        # succeeded.
 
-    await _publish(upload_id, "ready", 1.0, "Upload complete")
+    await _publish(upload_id, "queued", 0.05, "Queued for parsing")
 
     return UploadResponse(
         upload_id=upload_id,
@@ -239,9 +263,9 @@ async def upload_chat(
         detected_platform=detection.platform.value,
         detection_confidence=detection.confidence,
         detection_reason=detection.reason,
-        status="ready",
-        meta=ucj.meta,
-        skipped_count=getattr(ucj, "_skipped_count", 0),  # set by builder if available
+        status="queued",
+        meta=None,
+        skipped_count=0,
     )
 
 
@@ -254,22 +278,37 @@ async def get_upload_status(
     upload_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> UploadStatus:
-    """Poll-friendly status endpoint - returns the same data the WS feed pushes.
+    """Poll-friendly status endpoint.
 
-    Falls back to the DB when the in-memory broker has no record (e.g. after
-    a server restart) so dashboards reopened later still resolve.
+    Source of truth is the `chat_uploads` row in Postgres because that's
+    the only place the Celery worker can write to — the in-process broker
+    lives in the FastAPI process and the worker is a separate process, so
+    its events never reach this broker. We only consult the broker as a
+    finer-grained progress overlay during the brief in-request stages
+    (e.g. file save / queueing), and ignore it once the DB has advanced
+    beyond `pending`.
     """
-    s = broker.latest(upload_id)
-    if s is not None:
-        return s
-
-    # In-memory broker is empty (process restarted). Reconstruct from the DB.
     from app.models import ChatUpload
 
     upload = await db.get(ChatUpload, upload_id)
     if upload is None:
+        # Maybe the row hasn't been committed yet but the broker has a
+        # cached event from the request handler — fall back to that.
+        cached = broker.latest(upload_id)
+        if cached is not None:
+            return cached
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown upload id")
-    return _status_from_upload(upload)
+
+    db_status = _status_from_upload(upload)
+    # If the DB row is still `pending`, the in-process broker may have a
+    # finer-grained "queued"/"parsing" event with a richer message — prefer
+    # it. Once the DB advances (worker started writing), the broker is
+    # behind reality, so always prefer the DB.
+    if upload.status.value == "pending":
+        cached = broker.latest(upload_id)
+        if cached is not None:
+            return cached
+    return db_status
 
 
 # ProcessingStatus (DB) -> ProcessingStage (API) mapping. The API stage vocab
@@ -412,129 +451,6 @@ async def upload_progress_ws(websocket: WebSocket, upload_id: UUID) -> None:
         await broker.unsubscribe(upload_id, queue)
 
 
-# ---------------------------------------------------------------------------
-# Persistence helper
-# ---------------------------------------------------------------------------
-
-
-async def _persist_upload(
-    db: AsyncSession,
-    upload_id: UUID,
-    ucj: Any,  # UCJFile - typed loosely to avoid a circular import at module load
-    detection: Any,  # DetectionResult
-    filename: str,
-) -> None:
-    """
-    Insert one ChatUpload row + bulk-insert all Message rows.
-
-    Field names match the post-refactor models (`app.models.chat_upload`,
-    `app.models.message`). If those aren't defined yet the import will
-    fail at runtime - the parser layer remains importable and testable
-    independently of the model layer.
-    """
-    # Local imports - models are still being introduced in a parallel branch,
-    # so importing them at module load would prevent the parser tests from
-    # running until the model files exist.
-    from app.models import ChatUpload, Message, ProcessingStatus, SourcePlatform
-
-    meta = ucj.meta
-
-    # Map the detector's platform string to the SourcePlatform enum. PlatformType
-    # and SourcePlatform share string values today; if a future detector adds
-    # a value the enum doesn't know about, fall back to `unknown`.
-    try:
-        platform_enum = SourcePlatform(detection.platform.value)
-    except ValueError:
-        platform_enum = SourcePlatform.unknown
-
-    # Auth lands in M03; until then attach uploads to a dev user so the FK holds.
-    user_id = await _get_or_create_dev_user_id(db)
-
-    chat_upload = ChatUpload(
-        id=upload_id,
-        user_id=user_id,
-        platform=platform_enum,
-        filename=filename,
-        ucj_data=meta.model_dump(mode="json"),
-        total_messages=meta.total_messages,
-        status=ProcessingStatus.done,
-    )
-    db.add(chat_upload)
-    # Flush so chat_upload.id is materialized for the FK on Message rows.
-    await db.flush()
-
-    # SQLAlchemy 2.0 bulk insert: `execute(insert(Model), rows)` skips ORM
-    # row construction (same speed win as the legacy bulk_insert_mappings)
-    # and works directly on AsyncSession with no run_sync detour.
-    rows = [
-        _message_to_mapping(upload_id, idx, msg)
-        for idx, msg in enumerate(ucj.messages)
-    ]
-    if rows:
-        # Stream the publish-progress events at coarse intervals (every 10k
-        # rows) instead of per-row to avoid drowning the broker.
-        batch_size = 10_000
-        for start in range(0, len(rows), batch_size):
-            batch = rows[start : start + batch_size]
-            await db.execute(insert(Message), batch)
-            done = min(start + batch_size, len(rows))
-            await _publish(
-                upload_id, "persisting",
-                0.7 + 0.25 * (done / len(rows)),  # ramp 0.7 -> 0.95 across persistence
-                f"Saved {done:,}/{len(rows):,} messages",
-            )
-
-    await db.commit()
-
-
-def _message_to_mapping(upload_id: UUID, msg_index: int, msg: Any) -> dict[str, Any]:
-    """Flatten a UCJ Message pydantic model into a dict for bulk insert.
-
-    Field names mirror the Message ORM columns in `app.models.message`.
-    """
-    md = msg.metadata
-    return {
-        "id": uuid4(),
-        "upload_id": upload_id,
-        "msg_index": msg_index,
-        "msg_id": msg.id,
-        "sender": msg.sender,
-        "timestamp": msg.timestamp,
-        "content": msg.content,
-        "msg_type": msg.type,
-        "reply_to_id": msg.reply_to_id,
-        "word_count": md.word_count,
-        "char_count": md.char_count,
-        "has_emoji": md.has_emoji,
-        "emojis": md.emojis,
-        "has_url": md.has_url,
-        "is_deleted": md.is_deleted,
-        "has_media": md.has_media,
-    }
-
-
-_DEV_USER_EMAIL = "dev@local"
-
-
-async def _get_or_create_dev_user_id(db: AsyncSession) -> UUID:
-    """Return the id of a placeholder dev user, creating it on first use.
-
-    Why: ChatUpload.user_id is NOT NULL, but auth (M03) hasn't landed yet.
-    Removing this helper is the right cleanup once real auth is wired.
-    """
-    from app.models import User
-
-    result = await db.execute(select(User).where(User.email == _DEV_USER_EMAIL))
-    user = result.scalar_one_or_none()
-    if user is not None:
-        return user.id
-
-    user = User(email=_DEV_USER_EMAIL, hashed_password="!disabled")
-    db.add(user)
-    await db.flush()
-    return user.id
-
-
 async def _publish(
     upload_id: UUID, stage: ProcessingStage, progress: float, message: str
 ) -> None:
@@ -548,40 +464,3 @@ async def _publish(
             timestamp=datetime.now(timezone.utc),
         )
     )
-
-
-def _enqueue_language_normalization(upload_id: UUID, ucj: Any) -> None:
-    """Fire the Layer-4 normalize task. The task itself chains the NLP
-    pipeline on success.
-
-    We pass `messages` to honor the spec'd signature, but the task body
-    re-fetches from Postgres (messages are already durable by this point);
-    the argument round-trip is just for compatibility with callers that
-    expect the (conversation_id, messages) shape. We deliberately send a
-    compact projection (id + content) rather than the full UCJ to keep
-    the Celery broker payload small on big chats.
-    """
-    try:
-        # Local import — keeps the parser-test path import-light and avoids
-        # a circular dep through `app.workers.celery_app`.
-        from app.tasks.language_tasks import normalize_language_task
-
-        compact = [
-            {"id": m.id, "content": m.content}
-            for m in getattr(ucj, "messages", [])
-        ]
-        normalize_language_task.delay(str(upload_id), compact)
-        logger.info(
-            "Enqueued language normalization for upload_id=%s (%d messages)",
-            upload_id,
-            len(compact),
-        )
-    except Exception:
-        # Soft-fail: a missing broker shouldn't tank the upload response.
-        # The downstream NLP pipeline still works against `content` if
-        # `content_english` is null, so the user just loses translation.
-        logger.warning(
-            "Couldn't enqueue language normalization task; downstream "
-            "services will read `content` instead of `content_english`",
-            exc_info=True,
-        )

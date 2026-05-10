@@ -27,7 +27,7 @@
  * inline so a slow LLM call doesn't block the rest of the module.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -160,11 +160,7 @@ function ConflictBody({ uploadId }: { uploadId: string }) {
   // window was opened so the drawer can hydrate context cleanly.
   const [drawerWindowId, setDrawerWindowId] = useState<string | null>(null);
 
-  const fetchedRef = useRef<string | null>(null);
-
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -180,7 +176,7 @@ function ConflictBody({ uploadId }: { uploadId: string }) {
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load conflicts");
         setLoading(false);
       });
@@ -191,25 +187,35 @@ function ConflictBody({ uploadId }: { uploadId: string }) {
     };
   }, [uploadId]);
 
+  // `themesNonce` is bumped by the Re-cluster button so the effect below
+  // re-fires with a fresh fetch (and `refresh=true` on the API call) even
+  // when `data` and `uploadId` haven't changed.
+  const [themesNonce, setThemesNonce] = useState(0);
+
   // Lazy-load themes after the main payload arrives. Themes call costs
   // a Claude round-trip, so we don't block the page on it. If the main
   // response already had themes (from a prior themes fetch), skip.
   useEffect(() => {
     if (!data || data.windows.length === 0) return;
-    if (themes !== null) return; // already populated
+    // Only skip when we already have themes AND the Re-cluster button
+    // hasn't been pressed since (nonce === 0).
+    if (themes !== null && themesNonce === 0) return;
     let cancelled = false;
     const ctrl = new AbortController();
     setThemesLoading(true);
     setThemesError(null);
 
-    getConflictThemes(uploadId, { signal: ctrl.signal })
+    getConflictThemes(uploadId, {
+      signal: ctrl.signal,
+      refresh: themesNonce > 0,
+    })
       .then((r) => {
         if (cancelled) return;
         setThemes(r.themes);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setThemesError(
           e instanceof Error ? e.message : "Failed to cluster themes",
         );
@@ -222,11 +228,11 @@ function ConflictBody({ uploadId }: { uploadId: string }) {
       cancelled = true;
       ctrl.abort();
     };
-    // We deliberately re-key on `data` (specifically: arriving for the
-    // first time) so a refresh after manual invalidation re-fires the
-    // theme fetch. eslint-disable-next-line react-hooks/exhaustive-deps
+    // `themes` is intentionally NOT in deps — we don't want a successful
+    // setThemes(r.themes) to re-fire this effect. The nonce is the only
+    // signal that means "go again".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, uploadId]);
+  }, [data, uploadId, themesNonce]);
 
   if (loading) return <BodySkeleton />;
   if (error) return <ErrorPanel error={error} />;
@@ -244,8 +250,10 @@ function ConflictBody({ uploadId }: { uploadId: string }) {
         loading={themesLoading}
         error={themesError}
         onRefresh={() => {
+          // Bump the nonce so the lazy effect re-fires with refresh=true,
+          // bypassing the 24h server-side cache on /conflict-themes.
           setThemes(null);
-          fetchedRef.current = null; // re-fire the lazy effect
+          setThemesNonce((n) => n + 1);
         }}
       />
       <TimelineSection
@@ -1197,4 +1205,11 @@ function withAlpha(color: string, alpha: number): string {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
   return color;
+}
+
+/** True for either AbortController or axios-style cancellation errors. Both
+ *  can fire when Strict Mode unmounts a section's effect mid-flight. */
+function _isAbort(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "CanceledError" || e.name === "AbortError";
 }

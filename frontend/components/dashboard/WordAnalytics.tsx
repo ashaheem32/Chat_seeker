@@ -23,7 +23,7 @@
  * state so a slow request in one panel doesn't block the others.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -516,11 +516,8 @@ function EmojiSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<EmojiFrequencyResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -533,7 +530,7 @@ function EmojiSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load emojis");
         setLoading(false);
       });
@@ -761,11 +758,8 @@ function VocabSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<UniqueWordsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -778,7 +772,7 @@ function VocabSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load vocabulary");
         setLoading(false);
       });
@@ -997,11 +991,8 @@ function PhrasesSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<BigramsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -1014,7 +1005,7 @@ function PhrasesSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load phrases");
         setLoading(false);
       });
@@ -1177,11 +1168,8 @@ function LateNightSection({ uploadId }: { uploadId: string }) {
   const [data, setData] = useState<LateNightStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current === uploadId) return;
-    fetchedRef.current = uploadId;
     let cancelled = false;
     const ctrl = new AbortController();
     setLoading(true);
@@ -1194,7 +1182,7 @@ function LateNightSection({ uploadId }: { uploadId: string }) {
       })
       .catch((e) => {
         if (cancelled) return;
-        if (e instanceof Error && e.name === "CanceledError") return;
+        if (_isAbort(e)) return;
         setError(e instanceof Error ? e.message : "Failed to load late-night stats");
         setLoading(false);
       });
@@ -1493,4 +1481,11 @@ function labelHour(h: number): string {
   if (h === 12) return "12p";
   if (h < 12) return `${h}a`;
   return `${h - 12}p`;
+}
+
+/** True for either AbortController or axios-style cancellation errors. Both
+ *  can fire when Strict Mode unmounts a section's effect mid-flight. */
+function _isAbort(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === "CanceledError" || e.name === "AbortError";
 }
