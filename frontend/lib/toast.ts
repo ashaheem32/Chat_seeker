@@ -91,9 +91,11 @@ export function _getSnapshot(): ToastInstance[] {
   return queue;
 }
 
+const EMPTY_QUEUE: readonly ToastInstance[] = [];
+
 /** SSR snapshot — Toaster must render server-side as an empty viewport. */
 export function _getServerSnapshot(): ToastInstance[] {
-  return [];
+  return EMPTY_QUEUE as ToastInstance[];
 }
 
 export function _subscribe(listener: Listener): () => void {

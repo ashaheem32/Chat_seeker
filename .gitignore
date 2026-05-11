@@ -47,6 +47,7 @@ build/
 
 # ---- Local-only assets ----
 *.local
+sample_data/
 
 
 .claude
