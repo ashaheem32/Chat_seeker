@@ -15,7 +15,7 @@ services:
       ENVIRONMENT: development
       LOG_LEVEL: DEBUG
       # Looser CORS in dev so Storybook / alternate ports work
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:3001","http://127.0.0.1:3000"]'
     volumes:
       # Mount source for live-reload; .venv stays in the image to avoid host
       # OS contamination of installed packages.
@@ -25,7 +25,7 @@ services:
 
   worker:
     # Celery has a --reload-equivalent via watchdog; use auto-restart for dev.
-    command: watchmedo auto-restart --directory=/app/app --pattern=*.py --recursive -- celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1
+    command: celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1
     environment:
       ENVIRONMENT: development
       LOG_LEVEL: DEBUG

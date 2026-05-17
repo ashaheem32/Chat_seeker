@@ -38,8 +38,6 @@ import {
   Type,
   Users,
 } from "lucide-react";
-import { format } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import { getStatsOverview } from "@/lib/api";
 import { useStore } from "@/lib/store";
@@ -52,7 +50,7 @@ import type {
   WhoTextsFirstSlice,
 } from "@/lib/types";
 import { useCountUp } from "@/lib/use-count-up";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // Stagger between cards (ms). 50ms reads as "kinetic but not slow".
 const STAGGER_MS = 50;
@@ -700,8 +698,8 @@ function Row4FunFacts({ stats }: { stats: OverviewStats }) {
         : "—",
       icon: Type,
       sublabel: stats.longest_message
-        ? `${stats.longest_message.sender} · ${format(
-            new Date(stats.longest_message.timestamp),
+        ? `${stats.longest_message.sender} · ${safeFormatDate(
+            stats.longest_message.timestamp,
             "MMM d, yyyy",
           )}`
         : undefined,
@@ -714,8 +712,8 @@ function Row4FunFacts({ stats }: { stats: OverviewStats }) {
         : "—",
       icon: Heart,
       sublabel: stats.most_replied_to
-        ? `${stats.most_replied_to.sender} · ${format(
-            new Date(stats.most_replied_to.timestamp),
+        ? `${stats.most_replied_to.sender} · ${safeFormatDate(
+            stats.most_replied_to.timestamp,
             "MMM d, yyyy",
           )}`
         : undefined,
@@ -730,7 +728,7 @@ function Row4FunFacts({ stats }: { stats: OverviewStats }) {
     {
       title: "First message",
       value: stats.first_message
-        ? format(new Date(stats.first_message.timestamp), "MMM d, yyyy")
+        ? safeFormatDate(stats.first_message.timestamp, "MMM d, yyyy")
         : "—",
       icon: Sparkles,
       sublabel: stats.first_message

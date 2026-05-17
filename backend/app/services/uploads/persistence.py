@@ -114,12 +114,88 @@ async def persist_parsed_ucj(
         for idx, msg in enumerate(ucj.messages)
     ]
     if rows:
-        batch_size = 10_000
-        for start in range(0, len(rows), batch_size):
-            batch = rows[start : start + batch_size]
-            await db.execute(insert(Message), batch)
+        copied = await _bulk_copy_messages(db, rows)
+        if not copied:
+            # asyncpg COPY wasn't available — fall back to executemany
+            # INSERT. Slower but works against any driver.
+            batch_size = 10_000
+            for start in range(0, len(rows), batch_size):
+                batch = rows[start : start + batch_size]
+                await db.execute(insert(Message), batch)
 
     await db.commit()
+
+
+_COPY_COLUMNS: tuple[str, ...] = (
+    "id",
+    "upload_id",
+    "msg_index",
+    "msg_id",
+    "sender",
+    "timestamp",
+    "content",
+    "msg_type",
+    "reply_to_id",
+    "word_count",
+    "char_count",
+    "has_emoji",
+    "emojis",
+    "has_url",
+    "is_deleted",
+    "has_media",
+    "was_translated",
+)
+
+
+async def _bulk_copy_messages(db: AsyncSession, rows: list[dict[str, Any]]) -> bool:
+    """Insert all messages via asyncpg COPY. Returns True on success, False
+    if the raw connection isn't asyncpg (caller should fall back to INSERT).
+
+    COPY beats executemany INSERT by ~5-10× on large uploads because it
+    bypasses per-row SQL parsing and binds. We pass column order
+    explicitly so adding a new column to the model doesn't silently break
+    the COPY.
+    """
+    try:
+        raw_conn = await db.connection()
+        asyncpg_conn = await raw_conn.get_raw_connection()
+        driver = getattr(asyncpg_conn, "driver_connection", None)
+        if driver is None or not hasattr(driver, "copy_records_to_table"):
+            return False
+    except Exception:
+        return False
+
+    records = [
+        (
+            r["id"],
+            r["upload_id"],
+            r["msg_index"],
+            r["msg_id"],
+            r["sender"],
+            r["timestamp"],
+            r["content"],
+            r["msg_type"],
+            r["reply_to_id"],
+            r["word_count"],
+            r["char_count"],
+            r["has_emoji"],
+            r["emojis"],
+            r["has_url"],
+            r["is_deleted"],
+            r["has_media"],
+            False,  # was_translated default — language stage overwrites later
+        )
+        for r in rows
+    ]
+
+    try:
+        await driver.copy_records_to_table(
+            "messages", records=records, columns=list(_COPY_COLUMNS)
+        )
+    except Exception:
+        logger.exception("COPY failed; falling back to INSERT")
+        return False
+    return True
 
 
 def _message_to_mapping(upload_id: UUID, msg_index: int, msg: Any) -> dict[str, Any]:

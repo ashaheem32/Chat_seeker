@@ -31,9 +31,13 @@ export interface UseCountUpOptions {
 }
 
 export function useCountUp(
-  target: number,
+  rawTarget: number,
   { duration = 1100, decimals = 0, delay = 0, enabled = true }: UseCountUpOptions = {},
 ): number {
+  // Bad numeric inputs (NaN from a corrupted API field, Infinity from a
+  // divide-by-zero) would otherwise propagate into setValue and render as
+  // literal "NaN" in the DOM. Coerce to 0 at the boundary.
+  const target = Number.isFinite(rawTarget) ? rawTarget : 0;
   const [value, setValue] = useState<number>(0);
   // Track the last target we animated to so flipping the prop mid-flight
   // restarts the animation cleanly.

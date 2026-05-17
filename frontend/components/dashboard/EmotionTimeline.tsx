@@ -44,7 +44,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
 
 import {
   getEmotionalPeaks,
@@ -64,7 +64,7 @@ import type {
   SampleMessage,
   SentimentTimeline,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Color system — emotion palette per spec
@@ -179,7 +179,7 @@ function SentimentChartSection({ uploadId }: { uploadId: string }) {
         date: p.date,
         avg: p.avg_sentiment,
         message_count: p.message_count,
-        dominant_emotion: p.dominant_emotion ?? "",
+        dominant_emotion: p.dominant_emotion,
       };
       for (const slice of p.per_sender) {
         row[slice.sender] = slice.avg_sentiment;
@@ -294,7 +294,7 @@ interface ChartRow {
   date: string;
   avg: number | null;
   message_count: number;
-  dominant_emotion: string;
+  dominant_emotion: EmotionClass | null;
   [sender: string]: number | string | null;
 }
 
@@ -483,7 +483,7 @@ function PeakMarker({
   if (cx == null || cy == null) return null;
   const color = kind === "peak" ? EMOTION_COLORS.joy : EMOTION_COLORS.sadness;
   const labelY = kind === "peak" ? cy - 14 : cy + 18;
-  const dateLabel = format(parseISO(peak.bucket_start), "MMM d");
+  const dateLabel = safeFormatDate(peak.bucket_start, "MMM d");
   return (
     <g pointerEvents="none">
       <circle
@@ -528,7 +528,7 @@ function ChartTooltip({
   return (
     <div className="rounded-xl border border-border bg-card-elevated/95 px-3 py-2 text-xs shadow-soft backdrop-blur">
       <div className="font-display text-sm font-semibold">
-        {format(parseISO(label), "MMM d, yyyy")}
+        {safeFormatDate(label, "MMM d, yyyy")}
       </div>
       <div className="mt-2 space-y-1">
         {senders.map((s) => {
@@ -554,10 +554,7 @@ function ChartTooltip({
         <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-1.5 text-[11px]">
           <span
             className="h-1.5 w-1.5 rounded-full"
-            style={{
-              background:
-                EMOTION_COLORS[(row.dominant_emotion as EmotionClass) ?? "joy"],
-            }}
+            style={{ background: EMOTION_COLORS[row.dominant_emotion] }}
           />
           <span className="text-muted-foreground">Dominant:</span>
           <span className="capitalize text-foreground">{row.dominant_emotion}</span>
@@ -822,7 +819,7 @@ function DonutSamples({
             “{m.content_preview}”
           </p>
           <p className="mt-1 text-muted-foreground">
-            {format(parseISO(m.timestamp), "MMM d, yyyy")}
+            {safeFormatDate(m.timestamp, "MMM d, yyyy")}
           </p>
         </li>
       ))}
@@ -918,7 +915,7 @@ function CalendarHeatmap({ data }: { data: MoodCalendar }) {
         <div className="ml-8 mb-1.5 flex gap-[3px] text-[10px] text-muted-foreground">
           {grid.weeks.map((w, i) => (
             <div key={i} className="w-3 text-center">
-              {w.firstOfMonth ? format(parseISO(w.firstDate), "MMM") : ""}
+              {w.firstOfMonth ? safeFormatDate(w.firstDate, "MMM") : ""}
             </div>
           ))}
         </div>
@@ -994,7 +991,7 @@ function CalendarSquare({
           className="z-50 rounded-lg border border-border bg-card-elevated/95 px-3 py-2 text-xs shadow-soft backdrop-blur"
         >
           <div className="font-display text-sm font-semibold">
-            {format(parseISO(day.date), "EEE, MMM d, yyyy")}
+            {safeFormatDate(day.date, "EEE, MMM d, yyyy")}
           </div>
           {day.message_count > 0 ? (
             <>
@@ -1064,7 +1061,7 @@ function CalendarHighlight({
         </p>
       </div>
       <p className="mt-1 font-display text-sm font-semibold">
-        {format(parseISO(day.date), "EEE, MMM d, yyyy")}
+        {safeFormatDate(day.date, "EEE, MMM d, yyyy")}
       </p>
       <p className="text-xs text-muted-foreground">
         {day.message_count} messages
@@ -1198,8 +1195,8 @@ function PeakCard({
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-display text-sm font-semibold">
-            {format(parseISO(peak.bucket_start), "MMM d")} –{" "}
-            {format(parseISO(peak.bucket_end), "MMM d, yyyy")}
+            {safeFormatDate(peak.bucket_start, "MMM d")} –{" "}
+            {safeFormatDate(peak.bucket_end, "MMM d, yyyy")}
           </p>
           <p className="text-xs text-muted-foreground">
             <span style={{ color }} className="tabular-nums">
@@ -1255,7 +1252,7 @@ function SampleLine({ message }: { message: SampleMessage }) {
       </p>
       <p className="mt-1 text-muted-foreground">
         {message.sender} ·{" "}
-        {format(parseISO(message.timestamp), "MMM d, yyyy")}
+        {safeFormatDate(message.timestamp, "MMM d, yyyy")}
         {message.emotion_label ? (
           <>
             {" · "}
@@ -1413,10 +1410,9 @@ function sampleTicks(values: string[], target: number): string[] {
 }
 
 function formatTick(d: string, granularity: Granularity): string {
-  const date = parseISO(d);
-  if (granularity === "month") return format(date, "MMM yyyy");
-  if (granularity === "week") return format(date, "MMM d");
-  return format(date, "MMM d");
+  if (granularity === "month") return safeFormatDate(d, "MMM yyyy", "");
+  if (granularity === "week") return safeFormatDate(d, "MMM d", "");
+  return safeFormatDate(d, "MMM d", "");
 }
 
 function sentimentToColor(

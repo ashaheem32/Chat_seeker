@@ -45,7 +45,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { ContextDrawer } from "@/components/dashboard/ContextDrawer";
@@ -63,7 +63,7 @@ import type {
   StreamEvidence,
 } from "@/lib/types";
 import { useSearchHistory } from "@/lib/use-search-history";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1037,7 +1037,7 @@ function EvidenceCard({
               {e.sender}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {format(parseISO(e.timestamp), "MMM d, yyyy h:mm a")}
+              {safeFormatDate(e.timestamp, "MMM d, yyyy h:mm a")}
             </p>
           </div>
         </div>
@@ -1364,7 +1364,7 @@ function FindResultCard({
               {m.sender}
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {format(parseISO(m.timestamp), "MMM d, yyyy h:mm a")}
+              {safeFormatDate(m.timestamp, "MMM d, yyyy h:mm a")}
             </p>
           </div>
         </div>

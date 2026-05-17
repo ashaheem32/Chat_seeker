@@ -49,8 +49,6 @@ import {
   Sparkles,
   Type,
 } from "lucide-react";
-import { format, parseISO } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import {
   getBigrams,
@@ -72,7 +70,7 @@ import type {
   WordFrequency,
   WordFrequencyItem,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -942,7 +940,7 @@ function LengthOverTimeChart({
               dataKey="date"
               stroke="hsl(var(--muted-foreground))"
               tick={{ fontSize: 10 }}
-              tickFormatter={(d) => format(parseISO(d as string), "MMM d")}
+              tickFormatter={(d) => safeFormatDate(d as string, "MMM d")}
               tickLine={false}
               axisLine={false}
               minTickGap={28}
@@ -974,7 +972,7 @@ function LengthOverTimeChart({
                 borderRadius: 12,
                 fontSize: 11,
               }}
-              labelFormatter={(d) => format(parseISO(d as string), "MMM d, yyyy")}
+              labelFormatter={(d) => safeFormatDate(d as string, "MMM d, yyyy")}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -1307,7 +1305,7 @@ function LateNightContent({ stats }: { stats: LateNightStats }) {
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                   <span>{m.sender}</span>
                   <span>·</span>
-                  <span>{format(parseISO(m.timestamp), "MMM d, yyyy h:mm a")}</span>
+                  <span>{safeFormatDate(m.timestamp, "MMM d, yyyy h:mm a")}</span>
                   {m.sentiment_score != null ? (
                     <>
                       <span>·</span>

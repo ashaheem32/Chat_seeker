@@ -203,10 +203,24 @@ class NLPPipeline:
             # ---- 6: conversation-level entities.
             await self._run_conversation_entities(upload_id, db, progress, stats)
 
-            # ---- Finalize: hand off to the embedding stage.
+            # ---- Finalize: coordinate with the parallel embedding stage.
+            # NLP and embeddings now run concurrently from the language
+            # task. Whichever finishes second flips status to `done`; the
+            # first finisher leaves status in the in-progress sentinel so
+            # the search endpoint keeps 409'ing until both are ready.
+            from app.core.cache import cache
+
+            stages_done = await cache.mark_stage_complete(str(upload_id), "nlp")
             upload = await db.get(ChatUpload, upload_id)
             assert upload is not None
-            upload.status = ProcessingStatus.embedding
+            # Respect a prior `failed` status — the embedding stage may have
+            # already crashed. Overwriting to `done` here would mask a
+            # broken upload as ready.
+            if upload.status != ProcessingStatus.failed:
+                if stages_done >= 2 or stages_done == -1:
+                    upload.status = ProcessingStatus.done
+                else:
+                    upload.status = ProcessingStatus.embedding
             await db.commit()
 
             await _emit(progress, "nlp_done", 1.0, "ready for embedding")

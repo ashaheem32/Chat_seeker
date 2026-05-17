@@ -21,15 +21,13 @@
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { format, parseISO } from "date-fns";
-
 import { getMessageContext } from "@/lib/api";
 import type {
   ContextMessage,
   MessageContextResponse,
   StreamEvidence,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 export interface ContextDrawerProps {
   open: boolean;
@@ -138,7 +136,7 @@ export function ContextDrawer({
                 {data?.target.sender ?? (loading ? "Loading…" : "—")}
                 {data ? (
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    {format(parseISO(data.target.timestamp), "MMM d, yyyy")}
+                    {safeFormatDate(data.target.timestamp, "MMM d, yyyy")}
                   </span>
                 ) : null}
               </p>
@@ -214,7 +212,7 @@ function ContextThread({ context }: { context: MessageContextResponse }) {
                 </p>
               </div>
               <span className="text-[10px] text-muted-foreground">
-                {format(parseISO(m.timestamp), "h:mm a")}
+                {safeFormatDate(m.timestamp, "h:mm a")}
               </span>
             </div>
             <p

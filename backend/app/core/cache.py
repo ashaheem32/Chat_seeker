@@ -119,6 +119,31 @@ class _Cache:
         except Exception as e:
             logger.warning("Redis SCAN/DEL %s failed: %s", pattern, e)
 
+    async def mark_stage_complete(self, upload_id: str, stage: str) -> int:
+        """Coordination primitive for the parallel NLP / embedding stages.
+
+        Records that `stage` finished for `upload_id` and returns the number
+        of distinct stages now complete. Callers compare against the
+        expected total (2 for nlp+embedding) to decide when to flip
+        ChatUpload.status to `done`.
+
+        Fail-open: returns -1 if Redis is unreachable, in which case the
+        caller should treat as "no coordination available" and proceed to
+        mark done — losing coordination is preferable to leaving an upload
+        stuck in an intermediate state forever.
+        """
+        client = await self._get_client()
+        if client is None:
+            return -1
+        key = f"upload:{upload_id}:done_stages"
+        try:
+            await client.sadd(key, stage)
+            await client.expire(key, 24 * 3600)
+            return int(await client.scard(key))
+        except Exception as e:
+            logger.warning("Redis SADD/SCARD %s failed: %s", key, e)
+            return -1
+
     async def close(self) -> None:
         if self._client is not None:
             try:

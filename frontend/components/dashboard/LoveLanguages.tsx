@@ -35,8 +35,6 @@ import {
   Star,
   Users,
 } from "lucide-react";
-import { format, parseISO } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import { getLoveLanguageReport } from "@/lib/api";
 import type {
@@ -45,7 +43,7 @@ import type {
   LoveLanguageReport,
   SampleMessage,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -441,7 +439,7 @@ function ExampleMessage({
         “{message.content_preview}”
       </p>
       <p className="mt-1 text-muted-foreground">
-        {message.sender} · {format(parseISO(message.timestamp), "MMM d, yyyy")}
+        {message.sender} · {safeFormatDate(message.timestamp, "MMM d, yyyy")}
       </p>
     </li>
   );

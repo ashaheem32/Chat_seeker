@@ -173,13 +173,9 @@ def process_upload_task(self, upload_id: str) -> dict:
             "error": str(e),
         }
 
-    # NLP succeeded. Hand off to the embedding stage. We use .delay() rather
-    # than chord/chain so the embedding task gets its own retry budget and a
-    # crash here doesn't cascade — the upload's `embedding` status is already
-    # persisted by the NLP pipeline, so an operator can also kick this task
-    # off manually if needed.
-    generate_embeddings_task.delay(str(uid))
-    logger.info("[task=%s] queued generate_embeddings_task for upload_id=%s", self.request.id, uid)
+    # NLP succeeded. Embeddings are enqueued in parallel by
+    # `normalize_language_task` (they touch disjoint columns), so this
+    # task doesn't fan out anymore.
 
     return {
         "upload_id": str(uid),

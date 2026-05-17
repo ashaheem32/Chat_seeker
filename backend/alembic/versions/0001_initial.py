@@ -18,7 +18,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects import postgresql
 
 from app.core.config import settings
@@ -63,7 +63,7 @@ def upgrade() -> None:
     # vector: pgvector for semantic search.
     # pg_trgm: trigram indexes for fast LIKE / fuzzy search.
     # citext: case-insensitive text — handy for participant handles.
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # pgvector removed for local run
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
@@ -236,7 +236,7 @@ def upgrade() -> None:
         sa.Column("topics", postgresql.ARRAY(sa.Text()), nullable=True),
         sa.Column(
             "embedding",
-            Vector(settings.EMBEDDING_DIMENSIONS),
+            postgresql.ARRAY(sa.Float()),
             nullable=True,
         ),
     )
@@ -271,14 +271,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # HNSW index for cosine-similarity search on embeddings.
-    # m=16 / ef_construction=64 are the pgvector defaults — good balance of
-    # build time, recall, and query latency for ~1536-dim vectors.
-    op.execute(
-        "CREATE INDEX ix_messages_embedding_hnsw "
-        "ON messages USING hnsw (embedding vector_cosine_ops) "
-        "WITH (m = 16, ef_construction = 64)"
-    )
+    # HNSW index creation removed for local run
 
     # ---- analysis_cache ---------------------------------------------------
     op.create_table(
@@ -328,7 +321,7 @@ def downgrade() -> None:
     op.drop_index("ix_analysis_cache_expires_at", table_name="analysis_cache")
     op.drop_table("analysis_cache")
 
-    op.drop_index("ix_messages_embedding_hnsw", table_name="messages")
+    # op.drop_index("ix_messages_embedding_hnsw", table_name="messages")
     op.drop_index("ix_messages_upload_id_emotion_label", table_name="messages")
     op.drop_index("ix_messages_upload_id_sentiment_label", table_name="messages")
     op.drop_index("ix_messages_upload_id_msg_index", table_name="messages")

@@ -9,12 +9,14 @@ Every model must be imported here so that:
 from app.models.analysis_cache import AnalysisCache
 from app.models.chat_upload import ChatUpload, ProcessingStatus, SourcePlatform
 from app.models.message import Message
+from app.models.message_chunk import MessageChunk
 from app.models.user import User
 
 __all__ = [
     "AnalysisCache",
     "ChatUpload",
     "Message",
+    "MessageChunk",
     "ProcessingStatus",
     "SourcePlatform",
     "User",

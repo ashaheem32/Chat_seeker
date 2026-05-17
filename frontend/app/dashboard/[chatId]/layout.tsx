@@ -48,8 +48,6 @@ import {
   TrendingUp,
   Trash2,
 } from "lucide-react";
-import { format } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusKind } from "@/components/ui/StatusBadge";
 import {
@@ -60,7 +58,7 @@ import {
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import type { ChatMeta, ProcessingStage } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 const SIDEBAR_OPEN = 240;
 const SIDEBAR_CLOSED = 56;
@@ -517,8 +515,8 @@ function DashboardHeader({
   error: string | null;
 }) {
   const dateRange = meta
-    ? `${format(new Date(meta.date_range.start), "MMM d, yyyy")} – ${format(
-        new Date(meta.date_range.end),
+    ? `${safeFormatDate(meta.date_range.start, "MMM d, yyyy")} – ${safeFormatDate(
+        meta.date_range.end,
         "MMM d, yyyy",
       )}`
     : "";

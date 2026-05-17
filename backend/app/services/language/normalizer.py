@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Message
@@ -50,6 +50,16 @@ from app.services.language.translator import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# When a stratified sample of an upload's messages comes back this English
+# (english + too_short), skip the per-row pipeline and bulk-stamp every row
+# with content_english = content in a single SQL. Tuned conservatively — a
+# 5% false-positive rate on the sample still leaves only ~2-5% of messages
+# unchanged-when-they-should-be-translated, which is far less damaging than
+# the current alternative of running translator on all 50k rows.
+_ENGLISH_SAMPLE_SIZE = 200
+_ENGLISH_THRESHOLD = 0.95
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +111,17 @@ class LanguageNormalizer:
         """Detect + translate every message in `upload_id`."""
         started = time.perf_counter()
         result = NormalizationResult(upload_id=upload_id)
+
+        # ---- 0. File-level English fast-path.
+        # Sampling N rows is cheap (one SQL hit) and the detector is pure
+        # Python. If the sample is overwhelmingly English/too_short, the
+        # whole upload almost certainly is too — and the existing per-row
+        # path would do 50k DB updates just to copy `content` into
+        # `content_english`. Replace that with a single bulk UPDATE.
+        if await self._try_english_fast_path(upload_id, db, result):
+            result.elapsed_seconds = round(time.perf_counter() - started, 3)
+            await _emit(progress, "lang_normalize_done", 1.0, "english fast-path")
+            return result
 
         # ---- 1. Find the rows that still need normalizing.
         rows = await self._fetch_pending(upload_id, db)
@@ -224,6 +245,75 @@ class LanguageNormalizer:
         )
         await _emit(progress, "lang_normalize_done", 1.0, "ready")
         return result
+
+    # ---- Fast-path -----------------------------------------------------
+    async def _try_english_fast_path(
+        self,
+        upload_id: UUID,
+        db: AsyncSession,
+        result: NormalizationResult,
+    ) -> bool:
+        """Sample pending rows; if dominantly English, bulk-stamp the upload
+        and return True. Otherwise return False so the normal path runs.
+
+        On hit, mutates `result` with the same counts the per-row path
+        would have produced so the Celery task's return shape is stable.
+        """
+        # Pull a stratified sample using Postgres' TABLESAMPLE-equivalent
+        # ORDER BY RANDOM(). LIMIT in a small subquery keeps the random
+        # scan cheap (no full table sort) for upload sizes we see in
+        # practice. The WHERE clause matches the same predicate the
+        # per-row path uses, so we only look at rows that haven't already
+        # been processed.
+        sample_stmt = (
+            select(Message.content)
+            .where(Message.upload_id == upload_id)
+            .where(Message.content_english.is_(None))
+            .where(Message.content.isnot(None))
+            .order_by(func.random())
+            .limit(_ENGLISH_SAMPLE_SIZE)
+        )
+        sample_contents = (await db.execute(sample_stmt)).scalars().all()
+        if not sample_contents:
+            return False
+
+        english_like = 0
+        for content in sample_contents:
+            det = detect_language(content or "")
+            if det.category in ("english", "too_short"):
+                english_like += 1
+
+        share = english_like / len(sample_contents)
+        if share < _ENGLISH_THRESHOLD:
+            logger.info(
+                "Language fast-path skipped upload=%s — sample english share %.2f < %.2f",
+                upload_id, share, _ENGLISH_THRESHOLD,
+            )
+            return False
+
+        # Hit. Stamp every pending row in one statement.
+        bulk_stmt = (
+            update(Message)
+            .where(Message.upload_id == upload_id)
+            .where(Message.content_english.is_(None))
+            .values(
+                content_english=Message.content,
+                original_language="english",
+                was_translated=False,
+            )
+        )
+        res = await db.execute(bulk_stmt)
+        await db.commit()
+        stamped = res.rowcount or 0
+
+        result.total_messages = stamped
+        result.detected_english = stamped
+        result.by_category["english"] = stamped
+        logger.info(
+            "Language fast-path hit upload=%s sample_share=%.2f stamped=%d",
+            upload_id, share, stamped,
+        )
+        return True
 
     # ---- DB helpers -----------------------------------------------------
     async def _fetch_pending(

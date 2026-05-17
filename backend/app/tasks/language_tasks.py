@@ -83,11 +83,15 @@ def normalize_language_task(
         # Still chain the NLP task so the dashboard isn't blocked by a
         # translation failure on a single chat.
         _enqueue_nlp(uid)
+        _enqueue_embeddings(uid)
         return {"upload_id": str(uid), "status": "failed", "error": str(e)}
 
-    # On success, fire the NLP pipeline. (process_upload_task itself chains
-    # generate_embeddings_task on completion, so we only kick off NLP here.)
+    # On success, fan out NLP and embeddings concurrently. They write
+    # different columns (sentiment/emotion/topics vs. embedding) so the
+    # row-level locks don't fight; running them in parallel cuts wall
+    # time from sum(nlp, embed) to max(nlp, embed).
     _enqueue_nlp(uid)
+    _enqueue_embeddings(uid)
 
     return {
         "upload_id": str(uid),
@@ -147,4 +151,19 @@ def _enqueue_nlp(upload_id: UUID) -> None:
         # Don't let it kill the language task's success path.
         logger.warning(
             "Couldn't enqueue NLP task after language normalize", exc_info=True
+        )
+
+
+def _enqueue_embeddings(upload_id: UUID) -> None:
+    """Fire the embedding indexer in parallel with NLP. They touch disjoint
+    columns on `messages`, so running them concurrently is safe."""
+    try:
+        from app.workers.tasks import generate_embeddings_task
+
+        generate_embeddings_task.delay(str(upload_id))
+        logger.info("Enqueued embedding indexer for upload_id=%s", upload_id)
+    except Exception:
+        logger.warning(
+            "Couldn't enqueue embeddings task after language normalize",
+            exc_info=True,
         )

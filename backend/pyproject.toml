@@ -57,9 +57,23 @@ passlib = { extras = ["bcrypt"], version = "^1.7.4" }
 # --- Observability ---------------------------------------------------------
 structlog = "^24.4.0"
 
+# --- NLP fallbacks (lightweight, always installed) -------------------------
+# These are tiny pure-Python packages the pipeline relies on as fallbacks
+# when the heavy `nlp` group isn't installed. Without them the worker
+# crashes on every upload — the sentiment analyzer tries VADER if torch
+# isn't present, and the language detector is used by Layer-4 normalization.
+vadersentiment = "^3.3.2"
+langdetect = "^1.0.9"
+
+# Auto-restart helper for `watchmedo` in the dev compose override.
+watchdog = "^6.0.0"
+
 # ----------------------------------------------------------------------------
-# NLP group - heavy ML dependencies. Installed only on worker images, not on
-# API containers, to keep the API image small. Install with:
+# NLP group - heavy ML dependencies. Adds ~1.5GB to the image (torch alone).
+# Install for full emotion classification, keyword extraction (KeyBERT),
+# topic modeling (BERTopic), and entity recognition (spacy). Without it the
+# sentiment pipeline falls back to VADER and emotion classification is
+# disabled (donuts render empty).
 #     poetry install --with nlp
 # ----------------------------------------------------------------------------
 [tool.poetry.group.nlp]
@@ -78,11 +92,6 @@ keybert = "^0.8.5"
 bertopic = "^0.16.3"
 # Named entity recognition. The en_core_web_sm model is downloaded post-install.
 spacy = "^3.7.5"
-# Lexicon-based sentiment fallback when transformer models can't be loaded.
-vadersentiment = "^3.3.2"
-# Language detection for routing non-English text past models that only
-# handle English.
-langdetect = "^1.0.9"
 # Faster tokenizers for the transformer models above.
 tokenizers = "^0.20.0"
 

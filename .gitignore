@@ -40,6 +40,11 @@ tsconfig.tsbuildinfo
 backend/uploads/*
 !backend/uploads/.gitkeep
 *.pid
+dump.rdb
+
+# ---- Stray lockfiles (project uses pnpm) ----
+frontend/package-lock.json
+backend/package-lock.json
 
 # ---- Build artifacts ----
 dist/

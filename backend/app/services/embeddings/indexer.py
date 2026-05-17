@@ -1,21 +1,29 @@
 """
-Embedding indexer.
+Embedding indexer — chunk-level.
 
-Glues the EmbeddingGenerator to the database. The flow:
-    1. Fetch messages without an embedding for the given upload.
-    2. Format each message via EmbeddingGenerator.preprocess_for_embedding,
-       passing the previous message in for short-message context.
-    3. Generate vectors in batches.
-    4. Bulk-update the messages table.
-    5. Advance ChatUpload.status to `done`.
+After build_chunks groups the upload's messages into conversation
+windows, the indexer:
+    1. Streams chunk drafts that don't yet have an embedding.
+    2. Fans out the OpenAI calls under a bounded asyncio.Semaphore so
+       multiple sub-batches are in flight simultaneously (~5-8x wall-
+       clock speedup on big chats; tier-1 OpenAI rate limits absorb
+       8x easily).
+    3. Bulk-INSERTs the chunks with their embeddings into
+       message_chunks.
+    4. Marks the embedding stage complete; the cache coordinator flips
+       ChatUpload.status to `done` once NLP also finishes.
 
-The indexer is idempotent — re-running it on a partially-indexed upload
-only touches messages where `embedding IS NULL`. So a crash mid-batch
-just means the worker resumes from the same point on retry.
+Idempotency:
+    On a re-run the indexer detects existing chunks for the upload
+    (via the unique (upload_id, chunk_index) constraint) and skips them
+    by re-chunking deterministically and only persisting rows where the
+    chunk_index isn't already present. This matches the "WHERE column
+    IS NULL" resume pattern used elsewhere in the pipeline.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -23,12 +31,12 @@ from dataclasses import dataclass
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChatUpload, Message, ProcessingStatus
+from app.models import ChatUpload, Message, MessageChunk, ProcessingStatus
+from app.services.embeddings.chunker import ChunkDraft, build_chunks
 from app.services.embeddings.generator import (
-    EmbeddingCost,
     EmbeddingGenerator,
     EmbeddingProvider,
     get_embedding_generator,
@@ -55,35 +63,28 @@ class IndexingResult:
     error: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Indexer
-# ---------------------------------------------------------------------------
+# Max in-flight embedding requests against OpenAI. text-embedding-3-small
+# tier-1 RPM is ~5000 — 8 concurrent is well within headroom.
+_MAX_INFLIGHT = 8
 
-
-# Page size for the DB-streaming loop. The OpenAI endpoint accepts up to
-# 2048 inputs but we go smaller per the comment in generator.py — failure
-# granularity beats raw throughput on chats this size.
-_PAGE_SIZE = 200
-
-# Inner generator batch — passed to generate_batch. Smaller than _PAGE_SIZE
-# means we make multiple HTTP calls per page; we keep them equal so each
-# DB page maps to one API call.
-_API_BATCH_SIZE = 100
+# Sub-batch size handed to a single OpenAI call. OpenAI accepts up to
+# 2048 inputs; 200 gives good granularity for partial-failure retries.
+_SUB_BATCH = 200
 
 
 class EmbeddingIndexer:
     """Async embedding indexer. Construct per upload run; the generator
-    singleton is shared across runs so model loads / API clients are reused."""
+    singleton is shared so model loads / API clients are reused."""
 
     def __init__(
         self,
         generator: EmbeddingGenerator | None = None,
-        page_size: int = _PAGE_SIZE,
-        api_batch_size: int = _API_BATCH_SIZE,
+        max_inflight: int = _MAX_INFLIGHT,
+        sub_batch: int = _SUB_BATCH,
     ) -> None:
         self.generator = generator or get_embedding_generator()
-        self.page_size = page_size
-        self.api_batch_size = api_batch_size
+        self.max_inflight = max_inflight
+        self.sub_batch = sub_batch
 
     async def index_upload(
         self,
@@ -91,7 +92,8 @@ class EmbeddingIndexer:
         db: AsyncSession,
         progress: ProgressCallback | None = None,
     ) -> IndexingResult:
-        """Embed every un-embedded message for `upload_id`."""
+        """Build chunks for `upload_id` if missing, embed them concurrently,
+        write into message_chunks."""
 
         started = time.perf_counter()
 
@@ -99,9 +101,8 @@ class EmbeddingIndexer:
         if upload is None:
             raise ValueError(f"ChatUpload {upload_id} not found")
 
-        # The pipeline expects to receive an upload in the `embedding` state.
-        # If we get here from a fresh re-run we may also be in `done` — that's
-        # fine, treat as a no-op resume. Failed/pending are not.
+        # Status sentinel. Accept `embedding` or `done` (re-runs); flip
+        # anything else into `embedding` so observers see progress.
         if upload.status not in {
             ProcessingStatus.embedding,
             ProcessingStatus.done,
@@ -115,160 +116,207 @@ class EmbeddingIndexer:
             upload.processing_error = None
             await db.commit()
 
-        # Total messages remaining to embed (for progress %).
-        total_remaining = await db.scalar(
-            select(func.count(Message.id))
-            .where(Message.upload_id == upload_id)
-            .where(Message.embedding.is_(None))
-        )
-        total_remaining = int(total_remaining or 0)
+        # ---- 1. Pull all messages for the upload in msg_index order.
+        # Even a 200k-message chat fits comfortably in RAM (~30MB of
+        # python objects) and the alternative — paging — bakes a hard
+        # boundary into the chunker that we'd then need to repair.
+        messages = await self._fetch_all_messages(upload_id, db)
+        if not messages:
+            logger.info("Embedding indexer: upload=%s has no messages", upload_id)
+            return await self._finalize(
+                upload_id, db, started, indexed=0, skipped=0,
+                total_tokens=0, total_usd=0.0, progress=progress,
+            )
+
+        # ---- 2. Build chunks. Idempotent: if some chunks already exist
+        # for this upload (resume case), skip those chunk_indexes.
+        all_chunks = build_chunks(upload_id, messages)
+        existing_indexes = await self._existing_chunk_indexes(upload_id, db)
+        pending = [c for c in all_chunks if c.chunk_index not in existing_indexes]
+        skipped = len(all_chunks) - len(pending)
+
         logger.info(
-            "Embedding indexer starting upload_id=%s remaining=%d",
-            upload_id,
-            total_remaining,
+            "Embedding indexer upload=%s chunks=%d already_persisted=%d to_embed=%d",
+            upload_id, len(all_chunks), skipped, len(pending),
         )
-        await _emit(progress, "embedding_start", 0.0, f"{total_remaining} to embed")
+        await _emit(
+            progress, "embedding_start", 0.0,
+            f"{len(pending)} chunks to embed",
+        )
 
-        indexed = 0
-        skipped = 0
-        total_tokens = 0
-        total_usd = 0.0
-        provider = self.generator.provider  # locks in the backend choice
+        if not pending:
+            return await self._finalize(
+                upload_id, db, started, indexed=0, skipped=skipped,
+                total_tokens=0, total_usd=0.0, progress=progress,
+            )
 
+        # ---- 3. Embed concurrently. Build sub-batches of `sub_batch`
+        # chunks each, gather under a Semaphore so at most
+        # `max_inflight` OpenAI calls are in flight simultaneously.
         try:
-            last_index = -1
-            while True:
-                page = await self._fetch_page(upload_id, db, last_index)
-                if not page:
-                    break
-                last_index = page[-1].msg_index
-
-                # Build the text-to-embed for each message; preprocess_for_embedding
-                # returns None for skip-candidates. We pass the previous DB
-                # message as context for very short messages.
-                prev_messages = await self._fetch_prev_messages(
-                    upload_id, db, [m.msg_index for m in page]
-                )
-
-                texts: list[str] = []
-                indices_to_embed: list[int] = []  # positions within `page`
-                for i, msg in enumerate(page):
-                    formatted = self.generator.preprocess_for_embedding(
-                        msg, prev_message=prev_messages.get(msg.msg_index)
-                    )
-                    if formatted is None:
-                        skipped += 1
-                        continue
-                    texts.append(formatted)
-                    indices_to_embed.append(i)
-
-                if not texts:
-                    # Whole page was un-embeddable. Mark progress and move on.
-                    await _emit_progress(
-                        progress, indexed + skipped, total_remaining
-                    )
-                    continue
-
-                vectors, cost = await self.generator.generate_batch(
-                    texts, batch_size=self.api_batch_size
-                )
-                total_tokens += cost.input_tokens
-                total_usd += cost.estimated_usd
-
-                # Bulk update — one parameter dict per row.
-                update_rows: list[dict] = []
-                for offset, page_idx in enumerate(indices_to_embed):
-                    update_rows.append(
-                        {
-                            "id": page[page_idx].id,
-                            "embedding": vectors[offset],
-                        }
-                    )
-                if update_rows:
-                    await db.execute(update(Message), update_rows)
-                    await db.commit()
-                    indexed += len(update_rows)
-
-                await _emit_progress(progress, indexed + skipped, total_remaining)
-
-            # All pages processed → advance status to done.
-            upload = await db.get(ChatUpload, upload_id)
-            assert upload is not None
-            upload.status = ProcessingStatus.done
-            await db.commit()
-
-            elapsed = time.perf_counter() - started
-            logger.info(
-                "Embedding indexer finished upload_id=%s indexed=%d skipped=%d tokens=%d cost=$%.4f elapsed=%.2fs",
-                upload_id,
-                indexed,
-                skipped,
-                total_tokens,
-                total_usd,
-                elapsed,
+            total_tokens, total_usd = await self._embed_and_persist(
+                upload_id, db, pending, progress,
             )
-            await _emit(progress, "embedding_done", 1.0, f"{indexed} indexed")
-
-            return IndexingResult(
-                upload_id=upload_id,
-                indexed_count=indexed,
-                skipped_count=skipped,
-                total_tokens_used=total_tokens,
-                estimated_cost_usd=total_usd,
-                provider=provider,
-                elapsed_seconds=elapsed,
-            )
-
         except Exception as e:
             logger.exception("Embedding indexer failed for upload_id=%s", upload_id)
             await db.rollback()
+
+            # Flip the upload to `failed` so the frontend can surface the
+            # error instead of silently rendering a search-broken dashboard.
+            # Previously this path called `mark_stage_complete` and promoted
+            # to `done`, which masked broken embeddings as "ready".
             upload = await db.get(ChatUpload, upload_id)
             if upload is not None:
-                # Embedding failure must not block the dashboard. NLP already
-                # ran successfully by the time we got here, so the sentiment /
-                # emotion / mood views are good to render. Mark status=done
-                # but keep `processing_error` populated so the search panel
-                # can detect the missing embeddings and show a focused state.
-                upload.status = ProcessingStatus.done
+                upload.status = ProcessingStatus.failed
                 upload.processing_error = f"Embedding indexer: {e}"
                 await db.commit()
             await _emit(progress, "embedding_failed", 1.0, str(e))
             raise
 
-    # ---- DB helpers -----------------------------------------------------
-    async def _fetch_page(
-        self, upload_id: UUID, db: AsyncSession, after_msg_index: int
+        return await self._finalize(
+            upload_id, db, started,
+            indexed=len(pending), skipped=skipped,
+            total_tokens=total_tokens, total_usd=total_usd,
+            progress=progress,
+        )
+
+    # ------------------------------------------------------------------
+    # Embedding core
+    # ------------------------------------------------------------------
+
+    async def _embed_and_persist(
+        self,
+        upload_id: UUID,
+        db: AsyncSession,
+        pending: list[ChunkDraft],
+        progress: ProgressCallback | None,
+    ) -> tuple[int, float]:
+        """Embed all `pending` chunks under a concurrency cap; bulk-INSERT
+        each completed sub-batch. Returns (total_tokens, total_usd).
+        """
+        semaphore = asyncio.Semaphore(self.max_inflight)
+        # Partition into sub-batches up front so each gather()
+        # element is one OpenAI call.
+        sub_batches: list[list[ChunkDraft]] = [
+            pending[i : i + self.sub_batch]
+            for i in range(0, len(pending), self.sub_batch)
+        ]
+        total_tokens = 0
+        total_usd = 0.0
+        done_count = 0
+
+        async def run_one(
+            batch: list[ChunkDraft],
+        ) -> tuple[list[ChunkDraft], list[list[float]], int, float]:
+            async with semaphore:
+                texts = [c.content for c in batch]
+                vectors, cost = await self.generator.generate_batch(
+                    texts, batch_size=len(texts)
+                )
+                return batch, vectors, cost.input_tokens, cost.estimated_usd
+
+        # Fire all sub-batches concurrently. We use as_completed so the
+        # bulk INSERT can start as soon as the first batch finishes,
+        # overlapping API + DB work.
+        coros = [run_one(b) for b in sub_batches]
+        for future in asyncio.as_completed(coros):
+            batch, vectors, tokens, usd = await future
+            total_tokens += tokens
+            total_usd += usd
+
+            rows = [
+                {
+                    "id": c.id,
+                    "upload_id": c.upload_id,
+                    "chunk_index": c.chunk_index,
+                    "start_msg_index": c.start_msg_index,
+                    "end_msg_index": c.end_msg_index,
+                    "start_ts": c.start_ts,
+                    "end_ts": c.end_ts,
+                    "participants": c.participants,
+                    "content": c.content,
+                    "embedding": vectors[i],
+                }
+                for i, c in enumerate(batch)
+            ]
+            await db.execute(insert(MessageChunk), rows)
+            await db.commit()
+            done_count += len(batch)
+
+            await _emit_progress(progress, done_count, len(pending))
+
+        return total_tokens, total_usd
+
+    # ------------------------------------------------------------------
+    # DB helpers
+    # ------------------------------------------------------------------
+
+    async def _fetch_all_messages(
+        self, upload_id: UUID, db: AsyncSession
     ) -> Sequence[Message]:
-        """Next page of un-embedded messages, in chronological order."""
         stmt = (
             select(Message)
             .where(Message.upload_id == upload_id)
-            .where(Message.msg_index > after_msg_index)
-            .where(Message.embedding.is_(None))
             .order_by(Message.msg_index.asc())
-            .limit(self.page_size)
         )
         return (await db.execute(stmt)).scalars().all()
 
-    async def _fetch_prev_messages(
-        self, upload_id: UUID, db: AsyncSession, msg_indices: list[int]
-    ) -> dict[int, Message]:
-        """Map current msg_index → previous Message, for the messages in this page.
-
-        We need the previous-message context only for very short rows; rather
-        than executing N queries, we fetch all rows with msg_index in
-        {idx-1 for idx in page} in one shot."""
-        wanted = [i - 1 for i in msg_indices if i > 0]
-        if not wanted:
-            return {}
+    async def _existing_chunk_indexes(
+        self, upload_id: UUID, db: AsyncSession
+    ) -> set[int]:
         stmt = (
-            select(Message)
-            .where(Message.upload_id == upload_id)
-            .where(Message.msg_index.in_(wanted))
+            select(MessageChunk.chunk_index)
+            .where(MessageChunk.upload_id == upload_id)
         )
-        rows = (await db.execute(stmt)).scalars().all()
-        by_index = {m.msg_index: m for m in rows}
-        return {i: by_index[i - 1] for i in msg_indices if (i - 1) in by_index}
+        return set((await db.execute(stmt)).scalars().all())
+
+    # ------------------------------------------------------------------
+    # Finalize
+    # ------------------------------------------------------------------
+
+    async def _finalize(
+        self,
+        upload_id: UUID,
+        db: AsyncSession,
+        started: float,
+        *,
+        indexed: int,
+        skipped: int,
+        total_tokens: int,
+        total_usd: float,
+        progress: ProgressCallback | None,
+    ) -> IndexingResult:
+        from app.core.cache import cache
+
+        stages_done = await cache.mark_stage_complete(str(upload_id), "embedding")
+        upload = await db.get(ChatUpload, upload_id)
+        assert upload is not None
+        # Respect a prior `failed` status — the NLP pipeline may have already
+        # crashed and recorded the error. Overwriting to `done` here would
+        # mask a broken upload as ready.
+        if upload.status != ProcessingStatus.failed and (
+            stages_done >= 2 or stages_done == -1
+        ):
+            upload.status = ProcessingStatus.done
+        await db.commit()
+
+        elapsed = time.perf_counter() - started
+        logger.info(
+            "Embedding indexer finished upload_id=%s indexed=%d skipped=%d "
+            "tokens=%d cost=$%.4f elapsed=%.2fs",
+            upload_id, indexed, skipped, total_tokens, total_usd, elapsed,
+        )
+        await _emit(progress, "embedding_done", 1.0, f"{indexed} chunks indexed")
+
+        return IndexingResult(
+            upload_id=upload_id,
+            indexed_count=indexed,
+            skipped_count=skipped,
+            total_tokens_used=total_tokens,
+            estimated_cost_usd=total_usd,
+            provider=self.generator.provider,
+            elapsed_seconds=elapsed,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +341,4 @@ async def _emit_progress(
     if progress is None or total <= 0:
         return
     fraction = min(1.0, processed / total)
-    await _emit(
-        progress, "embedding", fraction, f"{processed}/{total}"
-    )
+    await _emit(progress, "embedding", fraction, f"{processed}/{total}")

@@ -52,8 +52,6 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { format, parseISO } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import { ContextDrawer } from "@/components/dashboard/ContextDrawer";
 import { getConflictAnalysis, getConflictThemes } from "@/lib/api";
@@ -63,7 +61,7 @@ import type {
   ConflictWindow,
   ResolutionType,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, safeFormatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Constants — local palettes for the language word clouds
@@ -434,7 +432,7 @@ function FrequencyChart({
               dataKey="month"
               stroke="hsl(var(--muted-foreground))"
               tick={{ fontSize: 10 }}
-              tickFormatter={(m) => format(parseISO(`${m}-01`), "MMM yy")}
+              tickFormatter={(m) => safeFormatDate(`${m}-01`, "MMM yy", "")}
               tickLine={false}
               axisLine={false}
               minTickGap={20}
@@ -455,7 +453,7 @@ function FrequencyChart({
                 fontSize: 11,
               }}
               labelFormatter={(m) =>
-                format(parseISO(`${m as string}-01`), "MMMM yyyy")
+                safeFormatDate(`${m as string}-01`, "MMMM yyyy")
               }
             />
             <Bar
@@ -569,7 +567,7 @@ function ThemeCard({ theme }: { theme: ConflictTheme }) {
               </p>
               <p className="mt-1 text-muted-foreground">
                 {m.sender} ·{" "}
-                {format(parseISO(m.timestamp), "MMM d, yyyy")}
+                {safeFormatDate(m.timestamp, "MMM d, yyyy")}
               </p>
             </li>
           ))}
@@ -663,7 +661,7 @@ function ConflictRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="font-display text-sm font-semibold">
-              {format(parseISO(w.start_timestamp), "MMM d, yyyy")}
+              {safeFormatDate(w.start_timestamp, "MMM d, yyyy")}
             </span>
             <span className="text-[11px] text-muted-foreground">
               {formatMinutes(w.duration_minutes)} · {w.duration_messages} messages
@@ -741,7 +739,7 @@ function ConflictRow({
                   </p>
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {w.trigger_message.sender} ·{" "}
-                    {format(parseISO(w.trigger_message.timestamp), "h:mm a")}
+                    {safeFormatDate(w.trigger_message.timestamp, "h:mm a")}
                   </p>
                 </>
               ) : (
