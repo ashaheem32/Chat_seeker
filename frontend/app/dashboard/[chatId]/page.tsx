@@ -6,12 +6,13 @@
  * Composition:
  *   - <StatsOverview /> at the top — above-the-fold, no Recharts, kept
  *     eager so the first paint includes real content.
- *   - Six heavy modules below — each pulls in part of Recharts +
- *     module-local logic. They're code-split via next/dynamic so the
- *     initial bundle stays small and Recharts compilation doesn't
- *     monopolize the main thread during page load. Each renders a
- *     height-reserved <SectionSkeleton /> while its chunk arrives, so
- *     the page doesn't reflow as they hydrate.
+ *   - Six heavy modules below — code-split via next/dynamic AND wrapped
+ *     in <LazyMount/>. The dynamic chunk is only fetched once the
+ *     wrapper is near the viewport (300px below); until then we render
+ *     a <SectionSkeleton/> placeholder that reserves the right height.
+ *     This keeps initial Total Blocking Time low because only
+ *     StatsOverview's JS executes at first paint — every other module
+ *     waits for the user to scroll near it.
  *
  * Page-level concern is just the "is this chat ready for the dashboard?"
  * gate. ReadyGate polls /upload/{id} once for the whole route — the per-
@@ -21,6 +22,7 @@
 
 import dynamic from "next/dynamic";
 
+import { LazyMount } from "@/components/dashboard/LazyMount";
 import { ReadyGate } from "@/components/dashboard/ReadyGate";
 import { SectionSkeleton } from "@/components/dashboard/SectionSkeleton";
 import { StatsOverview } from "@/components/dashboard/StatsOverview";
@@ -82,16 +84,35 @@ export default function OverviewPage({
 }: {
   params: { chatId: string };
 }) {
+  const id = params.chatId;
   return (
-    <ReadyGate chatId={params.chatId}>
+    <ReadyGate chatId={id}>
       <div className="space-y-10 animate-fade-up">
-        <StatsOverview uploadId={params.chatId} />
-        <EmotionTimeline uploadId={params.chatId} />
-        <WordAnalytics uploadId={params.chatId} />
-        <SearchModule uploadId={params.chatId} />
-        <ConflictAnalysis uploadId={params.chatId} />
-        <LoveLanguages uploadId={params.chatId} />
-        <HealthScore uploadId={params.chatId} />
+        <StatsOverview uploadId={id} />
+
+        <LazyMount fallback={<SectionSkeleton height={620} />}>
+          <EmotionTimeline uploadId={id} />
+        </LazyMount>
+
+        <LazyMount fallback={<SectionSkeleton height={620} />}>
+          <WordAnalytics uploadId={id} />
+        </LazyMount>
+
+        <LazyMount fallback={<SectionSkeleton height={320} />}>
+          <SearchModule uploadId={id} />
+        </LazyMount>
+
+        <LazyMount fallback={<SectionSkeleton height={620} />}>
+          <ConflictAnalysis uploadId={id} />
+        </LazyMount>
+
+        <LazyMount fallback={<SectionSkeleton height={520} />}>
+          <LoveLanguages uploadId={id} />
+        </LazyMount>
+
+        <LazyMount fallback={<SectionSkeleton height={420} />}>
+          <HealthScore uploadId={id} />
+        </LazyMount>
       </div>
     </ReadyGate>
   );
