@@ -124,6 +124,8 @@ ignore = ["E501"]  # line length handled by formatter
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
+# Make the `app` package importable when running pytest from backend/.
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.12"

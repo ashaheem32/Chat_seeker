@@ -4,7 +4,9 @@ Creates the full ChatLens schema:
 - pgvector / pg_trgm / citext extensions
 - users
 - chat_uploads (with source_platform + processing_status enums)
-- messages (with pgvector embedding column + HNSW index)
+- messages (with pgvector embedding column; the HNSW index for semantic
+  search lives on message_chunks.embedding in migration 0003, which is the
+  granularity the search path actually queries)
 - analysis_cache
 - All supporting indexes
 
@@ -18,7 +20,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects import postgresql
 
 from app.core.config import settings
@@ -63,7 +65,13 @@ def upgrade() -> None:
     # vector: pgvector for semantic search.
     # pg_trgm: trigram indexes for fast LIKE / fuzzy search.
     # citext: case-insensitive text — handy for participant handles.
-    # pgvector removed for local run
+    #
+    # `vector` is created here (not only in scripts/init-db.sql) so a clean
+    # `alembic upgrade head` succeeds against any fresh Postgres — including a
+    # local non-Docker instance or a managed DB where the init script never
+    # runs. Migration 0003 (message_chunks.embedding vector(1536)) depends on
+    # this extension existing.
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
@@ -234,9 +242,14 @@ def upgrade() -> None:
         sa.Column("emotion_label", sa.String(length=16), nullable=True),
         sa.Column("emotion_score", sa.Float(), nullable=True),
         sa.Column("topics", postgresql.ARRAY(sa.Text()), nullable=True),
+        # Real pgvector column to match the Message ORM model
+        # (Vector(EMBEDDING_DIMENSIONS)). Was ARRAY(Float) "for local run",
+        # which drifted from the model and broke vector ops. No HNSW index
+        # here: the active search path embeds and queries message_chunks
+        # (see 0003), so an index on this column would sit over NULLs.
         sa.Column(
             "embedding",
-            postgresql.ARRAY(sa.Float()),
+            Vector(settings.EMBEDDING_DIMENSIONS),
             nullable=True,
         ),
     )
@@ -271,7 +284,9 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # HNSW index creation removed for local run
+    # No HNSW index on messages.embedding: semantic search runs on
+    # message_chunks.embedding (migration 0003), which is what gets populated
+    # and queried. Indexing this column would build over an all-NULL column.
 
     # ---- analysis_cache ---------------------------------------------------
     op.create_table(

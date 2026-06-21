@@ -1,4 +1,4 @@
-# ChatLenz
+# ChatLens
 
 
 > AI-powered chat analysis dashboard. Upload any chat export, get a deep

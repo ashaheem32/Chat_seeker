@@ -180,6 +180,17 @@ async def upload_chat(
     if not file.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Filename is required")
 
+    # ---- 0. Extension allow-list --------------------------------------
+    # Reject unsupported file types up front so we don't read/persist bytes we
+    # can't parse. Matches settings.ALLOWED_UPLOAD_EXTENSIONS (.json/.txt/.zip/.csv).
+    ext = Path(file.filename).suffix.lower()
+    if ext not in settings.ALLOWED_UPLOAD_EXTENSIONS:
+        allowed = ", ".join(sorted(settings.ALLOWED_UPLOAD_EXTENSIONS))
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"Unsupported file type '{ext or file.filename}'. Allowed: {allowed}",
+        )
+
     # ---- 1. Read + size check ------------------------------------------
     raw = await file.read()
     if len(raw) > settings.MAX_UPLOAD_SIZE_BYTES:

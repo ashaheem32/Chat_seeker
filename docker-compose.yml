@@ -75,8 +75,12 @@ services:
       # Without these, /generate_embeddings fails and search returns empty.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      # Defaults match app/core/config.py. Note: the actual provider is chosen
+      # at runtime by which API key is set (OpenAI preferred when both are),
+      # so LLM_PROVIDER is advisory today; set OPENAI_API_KEY in .env to use
+      # OpenAI (the checked-in .env does this) or ANTHROPIC_API_KEY for Claude.
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
@@ -118,8 +122,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      # Defaults match app/core/config.py. Note: the actual provider is chosen
+      # at runtime by which API key is set (OpenAI preferred when both are),
+      # so LLM_PROVIDER is advisory today; set OPENAI_API_KEY in .env to use
+      # OpenAI (the checked-in .env does this) or ANTHROPIC_API_KEY for Claude.
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}

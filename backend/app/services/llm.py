@@ -34,7 +34,8 @@ logger = logging.getLogger(__name__)
 # Sensible defaults. Override per call when a feature needs more tokens
 # or a tighter creativity budget.
 _DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-_DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5"
+# Keep in sync with settings.LLM_MODEL's default (app/core/config.py).
+_DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 
 Provider = Literal["openai", "anthropic"]

@@ -17,8 +17,6 @@ import type {
   BigramsResponse,
   ConflictAnalysisResponse,
   ConflictThemesResponse,
-  DashboardData,
-  DashboardStats,
   DetailedParticipantStats,
   EmojiFrequencyResponse,
   EmotionByParticipant,
@@ -225,24 +223,11 @@ export async function getChat(uploadId: string): Promise<UCJFile> {
   return getUCJ(uploadId);
 }
 
-export async function getDashboardData(uploadId: string): Promise<DashboardData> {
-  const { data } = await apiClient.get<DashboardData>(
-    `${API_PREFIX}/chats/${uploadId}/dashboard`,
-  );
-  return data;
-}
-
-/**
- * Aggregated stats for the overview module — message counts, sentiment
- * trace, activity buckets, top topics, highlights. Backend computes this
- * once per chat (cached via AnalysisCache) so the route is fast on repeat hits.
- */
-export async function getDashboardStats(uploadId: string): Promise<DashboardStats> {
-  const { data } = await apiClient.get<DashboardStats>(
-    `${API_PREFIX}/chats/${uploadId}/stats`,
-  );
-  return data;
-}
+// NOTE: getDashboardData()/getDashboardStats() were removed. They pointed at
+// `/chats/{id}/dashboard` and `/chats/{id}/stats`, which the backend never
+// exposed (the conversations router mounts under /conversations and has no
+// dashboard/stats sub-routes). Dashboard aggregates come from the /stats/*
+// endpoints below (getStatsOverview, getSentimentTimeline, …).
 
 // ---- File upload (alias to match the M04 module spec) --------------------
 
