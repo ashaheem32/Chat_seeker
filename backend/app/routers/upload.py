@@ -381,8 +381,13 @@ async def get_upload_ucj(
         .where(Message.upload_id == upload_id)
         .order_by(Message.msg_index.asc())
     )
-    if limit is not None and limit > 0:
-        msg_query = msg_query.limit(limit)
+    # limit=0 → meta-only (zero messages); limit=None → all messages (e.g.
+    # the download path). A previous `limit > 0` guard made limit=0 fall
+    # through to "return everything", which sent the entire chat (10+ MB for
+    # large uploads) to callers that only wanted the meta block — freezing the
+    # dashboard. Clamp negatives to 0 so a hostile query can't request all rows.
+    if limit is not None:
+        msg_query = msg_query.limit(max(limit, 0))
 
     result = await db.execute(msg_query)
     rows = result.scalars().all()

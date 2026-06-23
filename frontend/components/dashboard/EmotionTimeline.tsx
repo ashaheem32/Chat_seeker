@@ -106,8 +106,8 @@ export function EmotionTimeline({ uploadId }: { uploadId: string }) {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             How the emotional shape of the conversation moved over time —
-            who&apos;s felt what, when sentiment shifted, and the moments
-            that stand out.
+            who&apos;s felt what, when sentiment shifted, and the moments that
+            stand out.
           </p>
         </header>
 
@@ -165,7 +165,8 @@ function SentimentChartSection({ uploadId }: { uploadId: string }) {
 
   const senders = data?.senders ?? [];
   const senderColor = useMemo(
-    () => Object.fromEntries(senders.map((s) => [s, hsl(stringToHue(s), 70, 60)])),
+    () =>
+      Object.fromEntries(senders.map((s) => [s, hsl(stringToHue(s), 70, 60)])),
     [senders],
   );
 
@@ -213,8 +214,12 @@ function SentimentChartSection({ uploadId }: { uploadId: string }) {
       return closest;
     };
     return {
-      peaks: peaks.peaks.slice(0, 3).map((p) => ({ peak: p, x: findRow(p.bucket_start) })),
-      valleys: peaks.valleys.slice(0, 3).map((p) => ({ peak: p, x: findRow(p.bucket_start) })),
+      peaks: peaks.peaks
+        .slice(0, 3)
+        .map((p) => ({ peak: p, x: findRow(p.bucket_start) })),
+      valleys: peaks.valleys
+        .slice(0, 3)
+        .map((p) => ({ peak: p, x: findRow(p.bucket_start) })),
     };
   }, [peaks, rows]);
 
@@ -229,7 +234,8 @@ function SentimentChartSection({ uploadId }: { uploadId: string }) {
             Sentiment over time
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Per-participant sentiment, smoothed. Above the zero line is positive.
+            Per-participant sentiment, smoothed. Above the zero line is
+            positive.
           </p>
         </div>
         <GranularityToggle value={granularity} onChange={setGranularity} />
@@ -331,7 +337,14 @@ function SentimentChart({
 
   // Sample tick selection — too many ticks fight for label space on long
   // chats. Keep ~6 ticks regardless of row count.
-  const xTicks = useMemo(() => sampleTicks(splitRows.map((r) => r.date), 6), [splitRows]);
+  const xTicks = useMemo(
+    () =>
+      sampleTicks(
+        splitRows.map((r) => r.date),
+        6,
+      ),
+    [splitRows],
+  );
 
   return (
     <div className="h-72 w-full">
@@ -342,12 +355,28 @@ function SentimentChart({
         >
           <defs>
             <linearGradient id="grad-pos" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0} />
+              <stop
+                offset="0%"
+                stopColor="hsl(var(--success))"
+                stopOpacity={0.35}
+              />
+              <stop
+                offset="100%"
+                stopColor="hsl(var(--success))"
+                stopOpacity={0}
+              />
             </linearGradient>
             <linearGradient id="grad-neg" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
+              <stop
+                offset="0%"
+                stopColor="hsl(var(--destructive))"
+                stopOpacity={0.35}
+              />
+              <stop
+                offset="100%"
+                stopColor="hsl(var(--destructive))"
+                stopOpacity={0}
+              />
             </linearGradient>
           </defs>
 
@@ -458,9 +487,17 @@ function SentimentChart({
 
           <RechartsTooltip
             content={(props: any) => (
-              <ChartTooltip {...props} senders={senders} senderColor={senderColor} />
+              <ChartTooltip
+                {...props}
+                senders={senders}
+                senderColor={senderColor}
+              />
             )}
-            cursor={{ stroke: "hsl(var(--primary))", strokeOpacity: 0.4, strokeWidth: 1 }}
+            cursor={{
+              stroke: "hsl(var(--primary))",
+              strokeOpacity: 0.4,
+              strokeWidth: 1,
+            }}
           />
         </ComposedChart>
       </ResponsiveContainer>
@@ -557,7 +594,9 @@ function ChartTooltip({
             style={{ background: EMOTION_COLORS[row.dominant_emotion] }}
           />
           <span className="text-muted-foreground">Dominant:</span>
-          <span className="capitalize text-foreground">{row.dominant_emotion}</span>
+          <span className="capitalize text-foreground">
+            {row.dominant_emotion}
+          </span>
         </div>
       ) : null}
       <div className="mt-1 text-[11px] text-muted-foreground">
@@ -623,7 +662,9 @@ function DistributionSection({ uploadId }: { uploadId: string }) {
       .catch((e) => {
         if (cancelled) return;
         if (_isAbort(e)) return;
-        setError(e instanceof Error ? e.message : "Failed to load distribution");
+        setError(
+          e instanceof Error ? e.message : "Failed to load distribution",
+        );
         setLoading(false);
       });
     return () => {
@@ -690,13 +731,15 @@ function DonutCard({
   const active = useMemo(
     () =>
       activeEmotion
-        ? participant.distribution.find((s) => s.emotion === activeEmotion) ?? null
+        ? (participant.distribution.find((s) => s.emotion === activeEmotion) ??
+          null)
         : null,
     [activeEmotion, participant.distribution],
   );
   const top = useMemo(
     () =>
-      [...participant.distribution].sort((a, b) => b.share - a.share)[0] ?? null,
+      [...participant.distribution].sort((a, b) => b.share - a.share)[0] ??
+      null,
     [participant.distribution],
   );
   const focus = active ?? top;
@@ -704,7 +747,9 @@ function DonutCard({
   return (
     <div className="rounded-xl border border-border bg-card-elevated/40 p-4">
       <div className="flex items-center justify-between">
-        <h4 className="font-display text-sm font-semibold">{participant.sender}</h4>
+        <h4 className="font-display text-sm font-semibold">
+          {participant.sender}
+        </h4>
         <span className="text-[11px] text-muted-foreground">
           {participant.total_classified.toLocaleString()} classified
         </span>
@@ -729,9 +774,7 @@ function DonutCard({
                 cy="0"
                 fill="none"
                 stroke={EMOTION_COLORS[s.emotion]}
-                strokeWidth={
-                  activeEmotion === s.emotion ? stroke + 3 : stroke
-                }
+                strokeWidth={activeEmotion === s.emotion ? stroke + 3 : stroke}
                 strokeDasharray={`${s.len} ${c - s.len}`}
                 strokeDashoffset={s.offset}
                 onMouseEnter={() => setActiveEmotion(s.emotion)}
@@ -780,7 +823,9 @@ function DonutCard({
                     className="h-2 w-2 rounded-full"
                     style={{ background: EMOTION_COLORS[s.emotion] }}
                   />
-                  <span className="capitalize text-foreground">{s.emotion}</span>
+                  <span className="capitalize text-foreground">
+                    {s.emotion}
+                  </span>
                   <span className="ml-auto tabular-nums text-muted-foreground">
                     {(s.share * 100).toFixed(0)}%
                   </span>
@@ -866,7 +911,9 @@ export function MoodCalendarSection({ uploadId }: { uploadId: string }) {
           <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
             Section 03 · Calendar
           </p>
-          <h3 className="mt-0.5 font-display text-base font-semibold">Mood calendar</h3>
+          <h3 className="mt-0.5 font-display text-base font-semibold">
+            Mood calendar
+          </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             One square per day. Warm = positive, cool = negative.
           </p>
@@ -933,7 +980,12 @@ function CalendarHeatmap({ data }: { data: MoodCalendar }) {
             {grid.weeks.map((week, wi) => (
               <div key={wi} className="flex flex-col gap-[3px]">
                 {week.cells.map((cell, di) => (
-                  <CalendarSquare key={di} day={cell} happiest={data.happiest_day} hardest={data.hardest_day} />
+                  <CalendarSquare
+                    key={di}
+                    day={cell}
+                    happiest={data.happiest_day}
+                    hardest={data.hardest_day}
+                  />
                 ))}
               </div>
             ))}
@@ -1002,7 +1054,9 @@ function CalendarSquare({
                     className="font-medium"
                     style={{
                       color:
-                        day.avg_sentiment >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR,
+                        day.avg_sentiment >= 0
+                          ? POSITIVE_COLOR
+                          : NEGATIVE_COLOR,
                     }}
                   >
                     {(day.avg_sentiment * 100).toFixed(0)}%
@@ -1068,7 +1122,9 @@ function CalendarHighlight({
         {day.avg_sentiment != null ? (
           <>
             {" · "}
-            <span style={{ color }}>{(day.avg_sentiment * 100).toFixed(0)}%</span>
+            <span style={{ color }}>
+              {(day.avg_sentiment * 100).toFixed(0)}%
+            </span>
           </>
         ) : null}
       </p>
@@ -1130,7 +1186,12 @@ function PeaksSection({ uploadId }: { uploadId: string }) {
         <EmptyState message="Not enough sentiment data to surface peaks yet." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          <PeaksColumn title="Happiest" subtitle="Top 5 highs" entries={data.peaks} kind="peak" />
+          <PeaksColumn
+            title="Happiest"
+            subtitle="Top 5 highs"
+            entries={data.peaks}
+            kind="peak"
+          />
           <PeaksColumn
             title="Most difficult"
             subtitle="Top 5 lows"
@@ -1251,8 +1312,7 @@ function SampleLine({ message }: { message: SampleMessage }) {
         “{message.content_preview}”
       </p>
       <p className="mt-1 text-muted-foreground">
-        {message.sender} ·{" "}
-        {safeFormatDate(message.timestamp, "MMM d, yyyy")}
+        {message.sender} · {safeFormatDate(message.timestamp, "MMM d, yyyy")}
         {message.emotion_label ? (
           <>
             {" · "}
@@ -1352,7 +1412,9 @@ function SectionError({ error }: { error: string }) {
     <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
       <AlertCircle className="h-4 w-4 text-destructive" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">Couldn&apos;t load this section</p>
+        <p className="text-sm font-medium text-foreground">
+          Couldn&apos;t load this section
+        </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{error}</p>
       </div>
     </div>
@@ -1415,10 +1477,7 @@ function formatTick(d: string, granularity: Granularity): string {
   return safeFormatDate(d, "MMM d", "");
 }
 
-function sentimentToColor(
-  v: number | null,
-  messageCount: number,
-): string {
+function sentimentToColor(v: number | null, messageCount: number): string {
   if (v == null || messageCount === 0) return EMPTY_COLOR;
   // Magnitude → opacity, sign → hue.
   const mag = Math.min(1, Math.abs(v));
@@ -1460,12 +1519,20 @@ function colorToRGB(c: string): { r: number; g: number; b: number } | null {
   // rough conversion is fine.
   const m = c.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\)/);
   if (m) {
-    return hslToRgb(parseFloat(m[1]!), parseFloat(m[2]!) / 100, parseFloat(m[3]!) / 100);
+    return hslToRgb(
+      parseFloat(m[1]!),
+      parseFloat(m[2]!) / 100,
+      parseFloat(m[3]!) / 100,
+    );
   }
   return null;
 }
 
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+function hslToRgb(
+  h: number,
+  s: number,
+  l: number,
+): { r: number; g: number; b: number } {
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = l - c / 2;
@@ -1487,7 +1554,11 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
 
 // Calendar grid construction: groups days into ISO weeks (Mon..Sun cols).
 function buildCalendarGrid(days: MoodCalendarDay[]): {
-  weeks: { firstDate: string; firstOfMonth: boolean; cells: (MoodCalendarDay | null)[] }[];
+  weeks: {
+    firstDate: string;
+    firstOfMonth: boolean;
+    cells: (MoodCalendarDay | null)[];
+  }[];
 } {
   if (days.length === 0) return { weeks: [] };
   const byDate = new Map(days.map((d) => [d.date, d]));
@@ -1506,7 +1577,11 @@ function buildCalendarGrid(days: MoodCalendarDay[]): {
   }[] = [];
   let cursor = start;
   let currentMonth = -1;
-  while (cursor <= end) {
+  // Defense in depth: even with the UTC fix below, never let a future date
+  // edge case hard-freeze the page. 5000 weeks ≈ 96 years — far beyond any
+  // real conversation — so a healthy grid is never truncated.
+  let guard = 0;
+  while (cursor <= end && guard++ < 5000) {
     const cells: (MoodCalendarDay | null)[] = [];
     const weekStart = cursor;
     for (let i = 0; i < 7; i++) {
@@ -1516,11 +1591,18 @@ function buildCalendarGrid(days: MoodCalendarDay[]): {
       if (iso < firstDay || iso > lastDay) {
         cells.push(null);
       } else {
-        cells.push(day ?? { date: iso, avg_sentiment: null, dominant_emotion: null, message_count: 0 });
+        cells.push(
+          day ?? {
+            date: iso,
+            avg_sentiment: null,
+            dominant_emotion: null,
+            message_count: 0,
+          },
+        );
       }
       cursor = addDays(cursor, 1);
     }
-    const month = parseISO(weekStart).getUTCMonth();
+    const month = parseUTCDate(weekStart).getUTCMonth();
     weeks.push({
       firstDate: weekStart,
       firstOfMonth: month !== currentMonth,
@@ -1531,8 +1613,18 @@ function buildCalendarGrid(days: MoodCalendarDay[]): {
   return { weeks };
 }
 
+// Parse a YYYY-MM-DD string as UTC midnight. date-fns parseISO treats a
+// date-only string as LOCAL midnight; combined with the getUTC*/toISOString
+// math below that makes addDays() a no-op in positive-offset zones (e.g. IST,
+// UTC+5:30): getUTCDate() reads the *previous* UTC day, setUTCDate(+1) returns
+// to the same calendar day, so the string never advances and
+// buildCalendarGrid's `while (cursor <= end)` loop spins forever — freezing
+// the whole page. Parsing as UTC keeps every step timezone-stable.
+function parseUTCDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00Z`);
+}
 function startOfWeek(iso: string): string {
-  const d = parseISO(iso);
+  const d = parseUTCDate(iso);
   // ISO week starts Monday. JS getUTCDay() returns 0=Sunday … 6=Saturday.
   // Convert: Mon=0, Tue=1, …, Sun=6.
   const dow = (d.getUTCDay() + 6) % 7;
@@ -1542,7 +1634,7 @@ function endOfWeek(iso: string): string {
   return addDays(startOfWeek(iso), 6);
 }
 function addDays(iso: string, n: number): string {
-  const d = parseISO(iso);
+  const d = parseUTCDate(iso);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }

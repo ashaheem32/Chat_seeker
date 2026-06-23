@@ -137,7 +137,10 @@ export async function getUCJ(
 ): Promise<UCJFile> {
   const { data } = await apiClient.get<UCJFile>(
     `${API_PREFIX}/upload/${uploadId}/ucj`,
-    { params: limit ? { limit } : undefined },
+    // Use `!= null` (not a truthiness check) so `limit: 0` — "meta only, no
+    // messages" — is actually sent. A `limit ?` test dropped the param for 0,
+    // making the backend return the full chat (10+ MB) and freeze the page.
+    { params: limit != null ? { limit } : undefined },
   );
   return data;
 }
@@ -184,7 +187,10 @@ export function subscribeToProgress(
   if (options.onClose) ws.onclose = options.onClose;
 
   return () => {
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    if (
+      ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING
+    ) {
       ws.close();
     }
   };
@@ -258,7 +264,10 @@ export async function uploadFile(
             // axios emits progress events with `loaded` and (sometimes) `total`.
             // Guard against missing total (chunked transfer-encoding).
             if (!e.total) return;
-            const percent = Math.min(100, Math.round((e.loaded / e.total) * 100));
+            const percent = Math.min(
+              100,
+              Math.round((e.loaded / e.total) * 100),
+            );
             onProgress(percent);
           }
         : undefined,
@@ -415,7 +424,12 @@ export async function getWordFrequency(
 
 export async function getEmojiFrequency(
   uploadId: string,
-  options: { sender?: string; topN?: number; refresh?: boolean; signal?: AbortSignal } = {},
+  options: {
+    sender?: string;
+    topN?: number;
+    refresh?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<EmojiFrequencyResponse> {
   const { data } = await apiClient.get<EmojiFrequencyResponse>(
     `${API_PREFIX}/stats/${uploadId}/emoji-frequency`,
@@ -433,7 +447,12 @@ export async function getEmojiFrequency(
 
 export async function getBigrams(
   uploadId: string,
-  options: { sender?: string; topN?: number; refresh?: boolean; signal?: AbortSignal } = {},
+  options: {
+    sender?: string;
+    topN?: number;
+    refresh?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<BigramsResponse> {
   const { data } = await apiClient.get<BigramsResponse>(
     `${API_PREFIX}/stats/${uploadId}/bigrams`,

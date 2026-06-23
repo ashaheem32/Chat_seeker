@@ -31,7 +31,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -50,11 +50,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, type StatusKind } from "@/components/ui/StatusBadge";
-import {
-  getUCJ,
-  getUploadStatus,
-  ucjDownloadUrl,
-} from "@/lib/api";
+import { getUCJ, getUploadStatus, ucjDownloadUrl } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import type { ChatMeta, ProcessingStage } from "@/lib/types";
@@ -132,6 +128,10 @@ export default function DashboardLayout({
   const [meta, setMeta] = useState<ChatMeta | null>(null);
   const [status, setStatus] = useState<ProcessingStage>("queued");
   const [error, setError] = useState<string | null>(null);
+  // The polling effect is keyed only on chatId, so the `meta` state it closes
+  // over is permanently stale (null). A ref survives across ticks and lets us
+  // fetch meta exactly once instead of on every 2.5s poll.
+  const metaLoadedRef = useRef(false);
 
   // ---- Hydrate upload + poll while processing ---------------------------
   useEffect(() => {
@@ -148,10 +148,16 @@ export default function DashboardLayout({
         // Pull meta once it's been parsed. We don't depend on `ready` to
         // start fetching meta — even mid-processing the meta block is
         // populated as soon as parsing finishes.
-        if (!meta && (s.status === "ready" || s.status === "persisting" || s.status === "parsing")) {
+        if (
+          !metaLoadedRef.current &&
+          (s.status === "ready" ||
+            s.status === "persisting" ||
+            s.status === "parsing")
+        ) {
           try {
             const ucj = await getUCJ(params.chatId, 0); // 0 messages — meta only
             if (cancelled) return;
+            metaLoadedRef.current = true;
             setMeta(ucj.meta);
             setUpload({
               uploadId: params.chatId,
@@ -216,10 +222,7 @@ export default function DashboardLayout({
           error={error}
         />
 
-        <main
-          className="relative flex-1"
-          style={{ paddingTop: HEADER_HEIGHT }}
-        >
+        <main className="relative flex-1" style={{ paddingTop: HEADER_HEIGHT }}>
           <div className="px-6 py-6 sm:px-8 sm:py-8">{children}</div>
         </main>
       </div>
@@ -313,7 +316,9 @@ function Sidebar({
                   <Icon
                     className={cn(
                       "h-4 w-4 shrink-0 transition",
-                      active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                      active
+                        ? "text-primary"
+                        : "text-muted-foreground group-hover:text-foreground",
                     )}
                   />
                   {!collapsed && <span className="truncate">{item.label}</span>}
@@ -370,10 +375,16 @@ function ChatHeaderBlock({
       <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         Conversation
       </p>
-      <p className="mt-1 truncate text-sm font-medium text-foreground" title={meta?.source_file ?? chatId}>
+      <p
+        className="mt-1 truncate text-sm font-medium text-foreground"
+        title={meta?.source_file ?? chatId}
+      >
         {meta?.source_file ?? "Loading…"}
       </p>
-      <ParticipantAvatars participants={meta?.participants ?? []} className="mt-2.5" />
+      <ParticipantAvatars
+        participants={meta?.participants ?? []}
+        className="mt-2.5"
+      />
     </div>
   );
 }
@@ -461,7 +472,11 @@ function SidebarSecondaryAction({
     );
   }
   return (
-    <Link href={href ?? "#"} className={className} title={collapsed ? label : undefined}>
+    <Link
+      href={href ?? "#"}
+      className={className}
+      title={collapsed ? label : undefined}
+    >
       {content}
     </Link>
   );
