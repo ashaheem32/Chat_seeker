@@ -1,11 +1,11 @@
-# ChatLens
+# Chatseeker
 
 
 > AI-powered chat analysis dashboard. Upload any chat export, get a deep
 > read on emotion, vocabulary, conflicts, love languages, and the
 > overall communication health of the conversation.
 
-ChatLens parses platform-native exports (WhatsApp, Telegram, Instagram,
+Chatseeker parses platform-native exports (WhatsApp, Telegram, Instagram,
 Facebook, CSV, raw JSON) into a Universal Chat JSON (UCJ) format, then
 runs a multi-stage analysis pipeline that classifies emotion, detects
 language, translates non-English messages to English, embeds every
@@ -47,7 +47,7 @@ chats analyze cleanly.
 ## Repository layout
 
 ```
-chatlens/
+Chatseeker/
 ├── frontend/                           Next.js 14 app
 │   ├── app/
 │   │   ├── page.tsx                    Landing + drop-zone
@@ -91,7 +91,7 @@ Requirements: Docker Desktop 4.30+ (or Docker Engine 24+) and Compose v2.
 
 ```bash
 # 1. Clone + configure
-git clone <your-fork>.git chatlens && cd chatlens
+git clone <your-fork>.git Chatseeker && cd Chatseeker
 cp .env.example .env
 # Edit .env — see "Environment variables" below for what's required
 
@@ -237,7 +237,7 @@ See [`.env.example`](.env.example) for the full annotated list.
   health-score narrative + per-factor insights, Layer-4 language
   translation. Fallbacks exist but quality drops noticeably.
 - `OPENAI_API_KEY` — used for embeddings (`text-embedding-3-small`).
-  Without it, ChatLens falls back to the local `all-MiniLM-L6-v2` model
+  Without it, Chatseeker falls back to the local `all-MiniLM-L6-v2` model
   (requires `poetry install --with nlp`); vectors are zero-padded to
   match the DB column dim.
 - `SECRET_KEY` — generate with
@@ -270,7 +270,7 @@ English without losing the original.
 
 ## Cost & API token efficiency
 
-ChatLens runs a **local pre-pass before every Claude call** to keep
+Chatseeker runs a **local pre-pass before every Claude call** to keep
 costs under control. The pattern, surfaced through
 [`backend/app/services/analysis_triage.py`](backend/app/services/analysis_triage.py):
 
