@@ -247,7 +247,7 @@ function HeroCard({ index, icon: Icon, label, value, sublabel }: HeroCardProps) 
       className={cn(
         "surface-card group relative overflow-hidden p-5",
         "transition-all duration-300",
-        "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_8px_40px_-12px_hsl(var(--primary)/0.45)]",
+        "hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_32px_-16px_hsl(var(--primary)/0.28)]",
         "animate-fade-up",
       )}
       style={{ animationDelay: `${delay}ms`, animationFillMode: "both" }}

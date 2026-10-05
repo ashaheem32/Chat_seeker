@@ -1469,8 +1469,8 @@ function withAlpha(color: string, alpha: number): string {
 
 function sentimentColor(v: number): string {
   // Same warm/cool palette as the EmotionTimeline calendar.
-  if (v >= 0.05) return "#f59e0b";
-  if (v <= -0.05) return "#6366f1";
+  if (v >= 0.05) return "#b76e05";
+  if (v <= -0.05) return "#4338ca";
   return "hsl(var(--muted-foreground))";
 }
 

@@ -87,7 +87,7 @@ const SUGGESTIONS: {
   {
     category: "Communication",
     icon: MessageCircle,
-    color: "hsl(192 90% 60%)", // cyan
+    color: "hsl(190 78% 35%)", // cyan
     items: [
       { label: "Who dominates conversations?", query: "Who dominates the conversations and who tends to listen?" },
       { label: "Response time patterns", query: "How does each person respond — quickly, slowly, in bursts?" },
@@ -96,7 +96,7 @@ const SUGGESTIONS: {
   {
     category: "Affection",
     icon: Heart,
-    color: "hsl(330 80% 65%)", // pink
+    color: "hsl(340 69% 47%)", // pink
     items: [
       { label: "Most romantic messages", query: "What are the most romantic or affectionate messages?" },
       { label: "How affection shows up", query: "How does each person express affection in this conversation?" },
@@ -105,7 +105,7 @@ const SUGGESTIONS: {
   {
     category: "Conflict",
     icon: Zap,
-    color: "hsl(0 76% 60%)", // destructive
+    color: "hsl(var(--destructive))", // destructive
     items: [
       { label: "Common fight triggers", query: "What topics most often lead to disagreements?" },
       { label: "How we resolve arguments", query: "How are arguments resolved? Who apologizes first?" },
@@ -114,7 +114,7 @@ const SUGGESTIONS: {
   {
     category: "Patterns",
     icon: TrendingUp,
-    color: "hsl(264 84% 70%)", // accent
+    color: "hsl(var(--accent))", // accent
     items: [
       { label: "When communication changed", query: "When did the communication patterns change, and how?" },
       { label: "Shared interests and topics", query: "What topics and interests do we share most?" },
@@ -123,13 +123,13 @@ const SUGGESTIONS: {
 ];
 
 const EMOTION_COLORS: Record<EmotionClass, string> = {
-  joy: "#f59e0b",
-  love: "#ec4899",
-  sadness: "#6366f1",
-  anger: "#ef4444",
-  fear: "#8b5cf6",
-  surprise: "#06b6d4",
-  disgust: "#84cc16",
+  joy: "#b76e05",
+  love: "#be185d",
+  sadness: "#4338ca",
+  anger: "#c2413d",
+  fear: "#7e22ce",
+  surprise: "#0e7490",
+  disgust: "#4d7c0f",
 };
 
 // ---------------------------------------------------------------------------
@@ -1470,4 +1470,3 @@ function stringToHue(value: string): number {
   }
   return Math.abs(h) % 360;
 }
-

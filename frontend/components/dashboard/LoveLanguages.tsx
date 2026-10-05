@@ -58,31 +58,31 @@ const CATEGORY_META: Record<
   words_of_affirmation: {
     label: "Words of Affirmation",
     icon: MessageSquare,
-    color: "#ec4899", // pink
+    color: "#be185d", // pink
     copy: "Compliments, encouragement, the explicit \"I love you\".",
   },
   acts_of_service: {
     label: "Acts of Service",
     icon: HeartHandshake,
-    color: "#22c55e", // green
+    color: "#15803d", // green
     copy: "Showing up, taking care of things, lightening the load.",
   },
   quality_time: {
     label: "Quality Time",
     icon: Users,
-    color: "#06b6d4", // cyan
+    color: "#0e7490", // cyan
     copy: "Plans to be together, missing each other, undivided attention.",
   },
   physical_touch: {
     label: "Physical Touch",
     icon: Hand,
-    color: "#f97316", // orange
+    color: "#c2410c", // orange
     copy: "Hugs, kisses, holding — closeness through the body.",
   },
   gift_giving: {
     label: "Gift Giving",
     icon: Gift,
-    color: "#a855f7", // purple
+    color: "#7e22ce", // purple
     copy: "Surprises, picking up something thoughtful, bringing things.",
   },
 };

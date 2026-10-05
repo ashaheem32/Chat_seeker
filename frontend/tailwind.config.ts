@@ -1,12 +1,12 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Tailwind config — ChatLens dark-first design system.
+ * Tailwind config — ChatLens light design system.
  *
  * Design tokens:
- *   - Body / chrome:   deep charcoal (#0f0f13 .. #1a1a24)
- *   - Cards / panels:  #161620 with subtle indigo border on hover
- *   - Accent:          electric indigo #6366f1 with violet glow
+ *   - Body / chrome:   cool off-white and white
+ *   - Cards / panels:  white with soft slate borders
+ *   - Accent:          deep indigo with violet highlights
  *   - Type:            Syne (display) + DM Sans (body), wired via CSS vars
  *
  * The CSS-variable indirection (`hsl(var(--primary))`) lets us re-skin
@@ -108,11 +108,10 @@ const config: Config = {
           "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)",
       },
       boxShadow: {
-        // Premium card shadow — pairs with dark cards over near-black bg.
-        soft: "0 1px 0 0 hsl(var(--border)) inset, 0 8px 32px -16px rgb(0 0 0 / 0.6)",
-        glow: "0 0 0 1px hsl(var(--primary) / 0.6), 0 8px 40px -8px hsl(var(--primary) / 0.45)",
+        soft: "0 1px 2px hsl(224 33% 25% / 0.03), 0 12px 32px -18px hsl(224 33% 25% / 0.2)",
+        glow: "0 0 0 1px hsl(var(--primary) / 0.2), 0 10px 24px -10px hsl(var(--primary) / 0.3)",
         "inner-glow":
-          "inset 0 1px 0 0 hsl(var(--primary) / 0.12), 0 0 32px -8px hsl(var(--primary) / 0.35)",
+          "inset 0 1px 0 0 hsl(var(--primary) / 0.08), 0 0 24px -10px hsl(var(--primary) / 0.2)",
       },
       keyframes: {
         "accordion-down": {

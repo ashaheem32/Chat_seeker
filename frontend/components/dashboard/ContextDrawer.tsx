@@ -121,7 +121,7 @@ export function ContextDrawer({
           className={cn(
             "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col",
             "border-l border-border bg-card",
-            "shadow-[-12px_0_40px_-12px_rgba(0,0,0,0.5)]",
+            "shadow-[-12px_0_40px_-12px_rgba(32,48,92,0.18)]",
             "data-[state=open]:animate-in data-[state=open]:slide-in-from-right",
             "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right",
           )}

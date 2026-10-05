@@ -71,20 +71,20 @@ import { cn, safeFormatDate } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 const EMOTION_COLORS: Record<EmotionClass, string> = {
-  joy: "#f59e0b",
-  love: "#ec4899",
-  sadness: "#6366f1",
-  anger: "#ef4444",
-  fear: "#8b5cf6",
-  surprise: "#06b6d4",
-  disgust: "#84cc16",
+  joy: "#b76e05",
+  love: "#be185d",
+  sadness: "#4338ca",
+  anger: "#c2413d",
+  fear: "#7e22ce",
+  surprise: "#0e7490",
+  disgust: "#4d7c0f",
 };
 
 // Sentiment color stops for the calendar heatmap.
-//   Positive: indigo → warm pink.   Negative: cool slate → indigo.
-const POSITIVE_COLOR = "#f59e0b"; // warm
-const NEGATIVE_COLOR = "#6366f1"; // cool indigo
-const EMPTY_COLOR = "hsl(240 14% 14%)"; // matches --muted in dark theme
+//   Positive: pale slate → amber. Negative: pale slate → indigo.
+const POSITIVE_COLOR = "#b76e05"; // warm
+const NEGATIVE_COLOR = "#4338ca"; // cool indigo
+const EMPTY_COLOR = "#eef2f8"; // pale slate for days without messages
 
 // ---------------------------------------------------------------------------
 // Public component

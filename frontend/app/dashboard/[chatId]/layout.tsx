@@ -420,7 +420,7 @@ function Avatar({ name }: { name: string }) {
   const hue = stringToHue(name);
   return (
     <span
-      className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-sidebar text-[10px] font-medium text-foreground/90"
+      className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-sidebar text-[10px] font-medium text-white"
       style={{
         background: `linear-gradient(135deg, hsl(${hue} 60% 45%), hsl(${(hue + 30) % 360} 70% 55%))`,
       }}

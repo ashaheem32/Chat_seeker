@@ -8,7 +8,7 @@ import "./globals.css";
 /**
  * Root layout — wires up:
  *   - Type system (Syne for display, DM Sans for body)
- *   - Dark mode (always on; we still set the .dark class for primitives)
+ *   - Light color scheme shared by the landing page and dashboard
  *   - Global Toaster mount
  *
  * The fonts are loaded via next/font so they're served from the same origin
@@ -56,19 +56,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f0f13",
-  colorScheme: "dark",
+  themeColor: "#f7f9fc",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      // suppressHydrationWarning protects against future theme-toggle work
-      // that flips .dark client-side; safe to keep even though we're dark-only today.
-      suppressHydrationWarning
-      className={`${dmSans.variable} ${syne.variable} dark`}
-    >
+    <html lang="en" className={`${dmSans.variable} ${syne.variable}`}>
       <body className="min-h-screen bg-background font-sans antialiased">
         {children}
         <Toaster />

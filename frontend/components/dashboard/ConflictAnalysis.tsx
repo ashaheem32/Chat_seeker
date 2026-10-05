@@ -68,9 +68,9 @@ import { cn, safeFormatDate } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 // Warm reds + ambers for conflict words — visually heavy without being alarmist.
-const CONFLICT_TONES = ["#ef4444", "#f97316", "#f59e0b"];
+const CONFLICT_TONES = ["#c2413d", "#c2410c", "#b76e05"];
 // Cool blues + soft greens for resolution words.
-const RESOLUTION_TONES = ["#06b6d4", "#10b981", "#22c55e"];
+const RESOLUTION_TONES = ["#0e7490", "#047857", "#15803d"];
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 

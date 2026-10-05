@@ -2,122 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * ChatLens design tokens — dark-mode first.
- *
- * The product never renders in true light mode today; we still set the
- * .dark class on <html> so any third-party Shadcn / Radix primitive that
- * branches on `dark:` keeps working. Both blocks below keep the same
- * palette, so a future light theme can be slotted in without touching
- * components.
- *
- * Color philosophy:
- *   - Body is a deep near-black charcoal — not pure black, which looks
- *     flat on OLEDs and lacks "depth". 7% lightness keeps subtle gradient
- *     work readable.
- *   - Cards sit one tier brighter than the body so panels feel layered.
- *   - Sidebar is a third tier (slightly bluer) so chrome reads distinct
- *     from content without needing harsh borders.
- *   - Indigo (#6366f1) is the only chromatic accent. Violet (#a855f7) is
- *     reserved for secondary highlights — gradient stops, glows, hover
- *     states. Used sparingly to keep the analytical feel.
- */
+/* Bright, cool surfaces with clear text and restrained indigo accents. */
 @layer base {
   :root {
-    /* --- surface ------------------------------------------------------- */
-    --background: 240 12% 7%;          /* #0f0f13 */
-    --foreground: 220 15% 92%;
+    --background: 220 33% 97%;
+    --foreground: 224 33% 17%;
 
-    --card: 240 16% 11%;               /* #161620 */
-    --card-foreground: 220 15% 95%;
-    --card-elevated: 240 16% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 33% 17%;
+    --card-elevated: 222 40% 99%;
 
-    --popover: 240 16% 11%;
-    --popover-foreground: 220 15% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 33% 17%;
 
-    /* Sidebar / chrome — sits one notch brighter than body. */
-    --sidebar: 240 16% 12%;            /* #1a1a24 */
-    --sidebar-foreground: 220 12% 78%;
-    --sidebar-accent: 240 18% 16%;
-    --sidebar-accent-foreground: 220 15% 96%;
-    --sidebar-border: 240 14% 20%;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 220 18% 35%;
+    --sidebar-accent: 231 80% 96%;
+    --sidebar-accent-foreground: 235 59% 39%;
+    --sidebar-border: 220 24% 90%;
 
-    /* --- accent -------------------------------------------------------- */
-    --primary: 239 84% 67%;            /* #6366f1 indigo-500 */
-    --primary-foreground: 240 14% 98%;
-    --primary-glow: 239 90% 75%;
+    --primary: 236 67% 48%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 239 67% 56%;
 
-    --accent: 264 84% 70%;             /* violet for glows / 2nd-tier highlights */
-    --accent-foreground: 240 14% 98%;
+    --accent: 270 56% 48%;
+    --accent-foreground: 0 0% 100%;
 
-    /* --- semantic ------------------------------------------------------ */
-    --secondary: 240 16% 15%;
-    --secondary-foreground: 220 12% 80%;
+    --secondary: 222 36% 94%;
+    --secondary-foreground: 223 27% 28%;
 
-    --muted: 240 14% 14%;
-    --muted-foreground: 240 8% 62%;
+    --muted: 220 29% 95%;
+    --muted-foreground: 220 13% 42%;
 
-    --destructive: 0 76% 60%;
-    --destructive-foreground: 240 14% 98%;
+    --destructive: 0 69% 43%;
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 152 70% 45%;
-    --success-foreground: 240 14% 98%;
+    --success: 155 69% 31%;
+    --success-foreground: 0 0% 100%;
 
-    --warning: 38 95% 60%;
-    --warning-foreground: 240 14% 12%;
+    --warning: 36 88% 36%;
+    --warning-foreground: 0 0% 100%;
 
-    --border: 240 14% 18%;
-    --input: 240 14% 14%;
-    --ring: 239 84% 67%;
+    --border: 220 24% 89%;
+    --input: 220 24% 84%;
+    --ring: 236 67% 48%;
 
-    /* --- chart palette ------------------------------------------------- */
-    --chart-1: 239 84% 67%;            /* indigo  */
-    --chart-2: 264 84% 70%;            /* violet  */
-    --chart-3: 188 95% 60%;            /* cyan    */
-    --chart-4: 32 95% 65%;             /* amber   */
-    --chart-5: 340 80% 65%;            /* pink    */
+    --chart-1: 236 67% 48%;
+    --chart-2: 270 56% 48%;
+    --chart-3: 190 78% 35%;
+    --chart-4: 32 85% 42%;
+    --chart-5: 340 69% 47%;
 
     --radius: 0.75rem;
-  }
-
-  /* Same palette under .dark for safety — Shadcn primitives sometimes
-     hard-code `.dark` selectors. Both blocks keep parity. */
-  .dark {
-    --background: 240 12% 7%;
-    --foreground: 220 15% 92%;
-    --card: 240 16% 11%;
-    --card-foreground: 220 15% 95%;
-    --card-elevated: 240 16% 13%;
-    --popover: 240 16% 11%;
-    --popover-foreground: 220 15% 95%;
-    --sidebar: 240 16% 12%;
-    --sidebar-foreground: 220 12% 78%;
-    --sidebar-accent: 240 18% 16%;
-    --sidebar-accent-foreground: 220 15% 96%;
-    --sidebar-border: 240 14% 20%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 240 14% 98%;
-    --primary-glow: 239 90% 75%;
-    --accent: 264 84% 70%;
-    --accent-foreground: 240 14% 98%;
-    --secondary: 240 16% 15%;
-    --secondary-foreground: 220 12% 80%;
-    --muted: 240 14% 14%;
-    --muted-foreground: 240 8% 62%;
-    --destructive: 0 76% 60%;
-    --destructive-foreground: 240 14% 98%;
-    --success: 152 70% 45%;
-    --success-foreground: 240 14% 98%;
-    --warning: 38 95% 60%;
-    --warning-foreground: 240 14% 12%;
-    --border: 240 14% 18%;
-    --input: 240 14% 14%;
-    --ring: 239 84% 67%;
-    --chart-1: 239 84% 67%;
-    --chart-2: 264 84% 70%;
-    --chart-3: 188 95% 60%;
-    --chart-4: 32 95% 65%;
-    --chart-5: 340 80% 65%;
   }
 }
 
@@ -171,18 +107,18 @@
   }
 
   ::selection {
-    background: hsl(var(--primary) / 0.35);
-    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
   }
 }
 
 @layer components {
-  /* Premium "frosted" card surface used by the dashboard panels. */
+  /* Light panel surface used by the dashboard modules. */
   .surface-card {
     @apply rounded-xl border border-border bg-card shadow-soft;
     background-image: linear-gradient(
       180deg,
-      hsl(var(--card-elevated) / 0.6),
+      hsl(var(--card-elevated)),
       hsl(var(--card))
     );
   }
