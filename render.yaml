@@ -1,0 +1,81 @@
+# ============================================================================
+# Render Blueprint - free-tier deployment of the ChatLens backend.
+#
+#   Render dashboard -> New -> Blueprint -> pick this repo.
+#
+# Creates:
+#   - chatlens-api    free web service (Docker). Runs API + Celery worker
+#                     together via backend/scripts/start.sh.
+#   - chatlens-redis  free Key Value instance (Redis-compatible) used as the
+#                     Celery broker, result backend and analysis cache.
+#
+# Postgres is NOT created here: Render's free Postgres expires after 30 days.
+# Use Neon (neon.tech, free, pgvector supported) and paste its connection
+# string into DATABASE_URL when the blueprint prompts for it.
+#
+# The frontend lives on Vercel - see DEPLOY.md.
+# ============================================================================
+services:
+  - type: web
+    name: chatlens-api
+    runtime: docker
+    plan: free
+    region: oregon
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/start.sh
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SECRET_KEY
+        generateValue: true
+      # Neon connection string, asyncpg flavour:
+      #   postgresql+asyncpg://USER:PASSWORD@HOST/DB?ssl=require
+      - key: DATABASE_URL
+        sync: false
+      # Keep the pool small - Neon's free tier caps connections and we run
+      # one uvicorn worker plus one Celery worker.
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: chatlens-redis
+          property: connectionString
+      # Your Vercel production URL, e.g. https://chatlens.vercel.app
+      # (comma-separate several origins if you also want previews).
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: LLM_MODEL
+        value: claude-sonnet-4-6
+      - key: EMBEDDING_PROVIDER
+        value: openai
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: EMBEDDING_DIMENSIONS
+        value: "1536"
+      - key: UPLOAD_DIR
+        value: /tmp/chatlens_uploads
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: CELERY_CONCURRENCY
+        value: "1"
+
+  - type: keyvalue
+    name: chatlens-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []   # internal access only

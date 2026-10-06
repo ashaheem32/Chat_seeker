@@ -161,3 +161,274 @@
     background-position: 0 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Landing page motion system (app/page.tsx + components/landing/*)
+   Everything here is CSS-driven so the page animates without a JS library.
+   `prefers-reduced-motion` collapses it all to static, visible content.
+   --------------------------------------------------------------------------- */
+
+@keyframes lp-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -14px, 0) rotate(1.5deg); }
+}
+@keyframes lp-float-x {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(10px, -8px, 0); }
+}
+@keyframes lp-orb {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(60px, -40px, 0) scale(1.08); }
+  66% { transform: translate3d(-40px, 30px, 0) scale(0.94); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes lp-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes lp-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes lp-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes lp-scan {
+  0% { transform: translateY(-20%); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(520%); opacity: 0; }
+}
+@keyframes lp-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes lp-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes lp-wave {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+@keyframes lp-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes lp-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes lp-pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35); }
+  50% { box-shadow: 0 0 0 10px hsl(var(--primary) / 0); }
+}
+@keyframes lp-gradient-pan {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes lp-word-in {
+  from { opacity: 0; transform: translateY(24px) rotateX(-30deg); filter: blur(6px); }
+  to { opacity: 1; transform: translateY(0) rotateX(0); filter: blur(0); }
+}
+@keyframes lp-sheen {
+  0% { transform: translateX(-150%) skewX(-20deg); }
+  100% { transform: translateX(250%) skewX(-20deg); }
+}
+@keyframes lp-dash-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+@layer components {
+  /* Scroll reveal. JS toggles `.is-visible`; delay via --lp-delay. */
+  .lp-reveal {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0);
+    transition:
+      opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--lp-delay, 0ms);
+    will-change: opacity, transform;
+  }
+  .lp-reveal[data-from="left"] { transform: translate3d(-40px, 0, 0); }
+  .lp-reveal[data-from="right"] { transform: translate3d(40px, 0, 0); }
+  .lp-reveal[data-from="scale"] { transform: scale(0.92); }
+  .lp-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Staggered word entrance for the hero headline. */
+  .lp-word {
+    display: inline-block;
+    opacity: 0;
+    transform-origin: 50% 100%;
+    animation: lp-word-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+
+  .lp-float { animation: lp-float 6s ease-in-out infinite; }
+  .lp-float-x { animation: lp-float-x 7s ease-in-out infinite; }
+  .lp-orb { animation: lp-orb 18s ease-in-out infinite; }
+  .lp-spin-slow { animation: lp-spin 24s linear infinite; }
+  .lp-pulse-border { animation: lp-pulse-border 2.4s ease-out infinite; }
+  .lp-pop { animation: lp-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  .lp-marquee {
+    display: flex;
+    width: max-content;
+    animation: lp-marquee var(--lp-duration, 28s) linear infinite;
+  }
+  .lp-marquee:hover { animation-play-state: paused; }
+
+  /* Animated SVG line draw — set --lp-len to the path length. */
+  .lp-draw {
+    stroke-dasharray: var(--lp-len, 1000);
+    stroke-dashoffset: var(--lp-len, 1000);
+    animation: lp-draw 2.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+  .lp-dash-flow {
+    stroke-dasharray: 6 6;
+    animation: lp-dash-flow 1.2s linear infinite;
+  }
+
+  .lp-cursor::after {
+    content: "";
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    background: hsl(var(--primary));
+    animation: lp-blink 1s steps(2) infinite;
+  }
+
+  /* Scanning beam over the mock dashboard. */
+  .lp-scan {
+    animation: lp-scan 5s ease-in-out infinite;
+  }
+
+  /* Equaliser bars in the mock emotion panel. */
+  .lp-wave {
+    transform-origin: 50% 100%;
+    animation: lp-wave 1.4s ease-in-out infinite;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+  .lp-grow-x {
+    transform-origin: 0 50%;
+    animation: lp-grow-x 1.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+
+  /* Cursor-tracking spotlight for feature cards. JS sets --mx / --my. */
+  .lp-spotlight {
+    position: relative;
+    overflow: hidden;
+  }
+  .lp-spotlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: radial-gradient(
+      320px circle at var(--mx, 50%) var(--my, 50%),
+      hsl(var(--primary) / 0.14),
+      transparent 60%
+    );
+  }
+  .lp-spotlight:hover::before { opacity: 1; }
+
+  /* Gradient border that pans on hover. */
+  .lp-gradient-border {
+    position: relative;
+    background: hsl(var(--card));
+  }
+  .lp-gradient-border::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      120deg,
+      hsl(var(--primary) / 0.6),
+      hsl(var(--accent) / 0.6),
+      hsl(var(--chart-3) / 0.6),
+      hsl(var(--primary) / 0.6)
+    );
+    background-size: 200% 100%;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.6;
+    animation: lp-gradient-pan 6s linear infinite;
+    pointer-events: none;
+  }
+
+  /* Sheen that sweeps across the primary CTA. */
+  .lp-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .lp-sheen::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.45), transparent);
+    animation: lp-sheen 3.2s ease-in-out infinite;
+    animation-delay: 1.2s;
+    pointer-events: none;
+  }
+
+  .lp-grid-bg {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.7) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.7) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .lp-tilt {
+    transform-style: preserve-3d;
+    transition: transform 0.25s ease-out;
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-reveal,
+  .lp-word {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+  .lp-float,
+  .lp-float-x,
+  .lp-orb,
+  .lp-spin-slow,
+  .lp-pulse-border,
+  .lp-pop,
+  .lp-marquee,
+  .lp-draw,
+  .lp-dash-flow,
+  .lp-scan,
+  .lp-wave,
+  .lp-grow-x,
+  .lp-gradient-border::after,
+  .lp-sheen::after,
+  .lp-cursor::after {
+    animation: none !important;
+  }
+  .lp-draw { stroke-dashoffset: 0 !important; }
+  .lp-wave { transform: scaleY(0.7) !important; }
+  .lp-grow-x { transform: none !important; }
+  .lp-tilt { transform: none !important; }
+}

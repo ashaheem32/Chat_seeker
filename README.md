@@ -50,7 +50,8 @@ chats analyze cleanly.
 Chatseeker/
 ├── frontend/                           Next.js 14 app
 │   ├── app/
-│   │   ├── page.tsx                    Landing + drop-zone
+│   │   ├── page.tsx                    Animated marketing landing (→ /upload)
+│   │   ├── upload/page.tsx             Upload + drop-zone
 │   │   └── dashboard/[chatId]/         Dashboard shell + modules
 │   ├── components/
 │   │   ├── dashboard/                  Seven dashboard modules
